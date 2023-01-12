@@ -813,6 +813,8 @@ I already came from producing a platform that has cost a huge investment (time, 
 > We are looking for ways of income that are welcome to support this work.  
 > Specs ready, Work In Progress, Let's...
 
+![](https://onmind.co/assets/slides/abcode-logo.png)
+
 ---
 
 > © 2021-2023 by César Arcila
