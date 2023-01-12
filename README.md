@@ -1,11 +1,19 @@
 # ABCode Programming Language - Version 1 (Preview/Alpha)
 
 > Mitigating the Software Tower of Babel to a great degree  
-> **EXPERIMENTAL**
+> **ABCode Compiler** - **EXPERIMENTAL** - [v0.1.0](https://github.com/kaesar/abcode/releases)
 
-![](./img/abcode-logo.png)
+![](https://onmind.co/assets/slides/abcode-logo.png)
 
-![](./img/onmind22-abcode.gif)
+![](https://onmind.co/assets/slides/onmind22-abcode.gif)
+
+Just uncompress and run something like...
+
+```bash
+./abcodec -s abc/hello.abc
+```
+
+> See here better: [ABCode Programming Language](https://onmind.co/doc/code/en/ABCode.md)
 
 Before I talk about a new specification and programming language **ABCode**, let me tell you a little experience about the platform I am the author of, whose name is [**OnMind**](https://onmind.co)...
 
@@ -732,7 +740,7 @@ The present document is already a specification of the `ABCode` programming lang
 
 To write with `ABCode` you don't need a new application, that is, you use an editor (like `VSCode` or `Sublime` that you download from Internet) associating the `YAML` format with `.abc` extension files. However, an editor is already being prepared for better integration with the transpiler.
 
-![](./img/abcode-edit.png)
+![](https://onmind.co/assets/slides/abcode-edit.png)
 
 ### About the intention of support
 
@@ -804,8 +812,6 @@ I already came from producing a platform that has cost a huge investment (time, 
 > We are looking for ways of income that are welcome to support this work.  
 > Specs ready, Work In Progress, Let's...
 
-![](./img/abcode-logo.png)
-
 ---
 
-> © 2022 by César Arcila
+> © 2021-2023 by César Arcila
