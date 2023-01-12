@@ -7,17 +7,18 @@
 
 ![](https://onmind.co/assets/slides/onmind22-abcode.gif)
 
-Just uncompress and run something like...
+Just download and uncompress according to your system and run something like...
 
 ```bash
 ./abcodec -s abc/hello.abc
 ```
 
+> `abcodec` is the compiler and `abc/hello.abc` represent your source code with **ABCode**.  
 > See here better: [ABCode Programming Language](https://onmind.co/doc/code/en/ABCode.md)
 
 Before I talk about a new specification and programming language **ABCode**, let me tell you a little experience about the platform I am the author of, whose name is [**OnMind**](https://onmind.co)...
 
-> Noting certain abilities to interact with different programming languages (as if I were a computer polyglot) it occurred to me to look for a way to achieve an abstract language for the component that takes care of what happens on the server (**backend**), accompanying a database manager ([**OnMind-XDB**](https://onmind.co/doc/code/en/OnMind-XDB)) that I also made along with my own platform [**OnMind**](https://onmind.co). So I decided to create a language specification that would convert the code to another language of interest. Finally, the programming language [`ABCode`](https://onmind.co/doc/code/en/ABCode.md) was born.
+> Noting certain abilities to interact with different programming languages (as if I were a computer polyglot) it occurred to me to look for a way to achieve an abstract language for the component that takes care of what happens on the server (**backend**), accompanying a database manager ([**OnMind-XDB**](https://onmind.co/doc/code/en/OnMind-XDB.md)) that I also made along with my own platform [**OnMind**](https://onmind.co). So I decided to create a language specification that would convert the code to another language of interest. Finally, the programming language [`ABCode`](https://onmind.co/doc/code/en/ABCode.md) was born.
 
 Indeed I found similar ideas but it required something different and as I have emphasized: "abstract". Then it occurred to me to combine [**YAML**](https://onmind.co/doc/code/en/YAML.md) (a markup language for data) and [**Python**](https://onmind.co/doc/code/en/Python.md) (with a restricted syntax), where each line starts with an attribute (distinguished by ending with a colon `:`) that indents every two spaces (according to [**YAML**](https://onmind.co/doc/code/en/YAML.md)), the rest of the line could be code. I validated the idea of this programming language with a great friend and colleague, he found it interesting, enthusiastic, and at the time expressed that he wanted to learn and even collaborate.
 <!--What do you think?-->
@@ -505,7 +506,7 @@ Then `dbc: mydb := "test"` points to the specific database name (`test`) by assi
 -->
 ## Query pattern to database
 
-In the case of `ask:` we would look for a database query structure to be translated internally to `SQL` (Structured Query Language) keeping the `YAML` style and a pattern, using the database [**OnMind-XDB**](https://onmind.co/doc/code/en/OnMind-XDB). For example:
+In the case of `ask:` we would look for a database query structure to be translated internally to `SQL` (Structured Query Language) keeping the `YAML` style and a pattern, using the database [**OnMind-XDB**](https://onmind.co/doc/code/en/OnMind-XDB.md). For example:
 <!--
 ```yaml
   ask:
@@ -803,7 +804,7 @@ As for other languages, it is considered that the strategy has a more than suffi
 
 As a technical detail, a package manager is not required (as this is left to each target language) but neither has a standard library or official **SDK** of the language been implemented. However, some essential software has started to be reviewed with a very specific simple and lightweight library (example: `Bottle`). Web applications are considered for some `API` of classic or flat mode (without requiring library), that is, a main controller (`endpoint`) without `url` routing (it would be done by `POST` with parameter indicating the function to invoke and a token for security), so it can be implemented natively for several languages, leaving open for the programmer the faculty to add some technology (**Framework** or Library) when it is needed.
 
-Although the transpiler code to be produced is expected to be released under the `MIT` (Open Source) license, it has not yet been published in Internet repositories (for example in `GitHub`) and this may change until the last moment (perhaps by `Apache` or other license). 
+Although the transpiler code to be produced is expected to be released under Open Source license, it has not yet been published in Internet repositories (for example in `GitHub`) and this may change until the last moment (perhaps by `Apache` or other license). 
 
 ### Support this work
 
