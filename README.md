@@ -1,11 +1,13 @@
 # ABCode Programming Language - Version 1 (Preview/Alpha)
 
 > Mitigating the Software Tower of Babel to a great degree  
-> **ABCode Compiler** - **EXPERIMENTAL** - [v0.1.0](https://github.com/kaesar/abcode/releases)
+> [**Download...**](https://github.com/kaesar/abcode/releases)
 
-![](https://onmind.co/assets/slides/abcode-logo.png)
+![](https://assets.onmind.net/know/abcode-logo.png)
 
-![](https://onmind.co/assets/slides/onmind22-abcode.gif)
+![](https://assets.onmind.net/know/onmind22-abcode.gif)
+
+<as-button link="https://github.com/kaesar/abcode/releases" label="Download..." icon="download" color="yellow"></as-button>
 
 Just download and uncompress according to your system and run something like...
 
@@ -14,43 +16,44 @@ Just download and uncompress according to your system and run something like...
 ```
 
 > `abcodec` is the compiler and `abc/hello.abc` represent your source code with **ABCode**.  
-> See here better: [ABCode Programming Language](https://onmind.co/doc/code/en/ABCode.md)
 
-Before I talk about a new specification and programming language **ABCode**, let me tell you a little experience about the platform I am the author of, whose name is [**OnMind**](https://onmind.co)...
+Before I talk about a new specification and programming language **ABCode**, let me tell you a little experience...
 
-> Noting certain abilities to interact with different programming languages (as if I were a computer polyglot) it occurred to me to look for a way to achieve an abstract language for the component that takes care of what happens on the server (**backend**), accompanying a database manager ([**OnMind-XDB**](https://onmind.co/doc/code/en/OnMind-XDB.md)) that I also made along with my own platform [**OnMind**](https://onmind.co). So I decided to create a language specification that would convert the code to another language of interest. Finally, the programming language [`ABCode`](https://onmind.co/doc/code/en/ABCode.md) was born.
+> Noting certain abilities to interact with different programming languages (as if I were a computer polyglot) it occurred to me to look for a way to achieve an abstract language for the component that takes care of what happens on the server (**backend**), accompanying a database manager ([**OnMind-XDB**](/onmind/en/OnMind-XDB)) that I also made along with my own platform [**OnMind**](https://onmind.co). So I decided to create a language specification that would convert the code to another language of interest. Finally, the programming language [`ABCode`](/onmind/en/ABCode) was born.
 
-Indeed I found similar ideas but it required something different and as I have emphasized: "abstract". Then it occurred to me to combine [**YAML**](https://onmind.co/doc/code/en/YAML.md) (a markup language for data) and [**Python**](https://onmind.co/doc/code/en/Python.md) (with a restricted syntax), where each line starts with an attribute (distinguished by ending with a colon `:`) that indents every two spaces (according to [**YAML**](https://onmind.co/doc/code/en/YAML.md)), the rest of the line could be code. I validated the idea of this programming language with a great friend and colleague, he found it interesting, enthusiastic, and at the time expressed that he wanted to learn and even collaborate.
+Indeed I found similar ideas but it required something different and as I have emphasized: "abstract". Then it occurred to me to combine [**YAML**](/code/en/YAML) (a markup language for data) and something from [**Python**](/code/en/Python. md) (with a restricted syntax), where each line starts with an attribute (distinguished by ending with a colon `:`) that indents every two spaces (according to [**YAML**](/code/en/YAML)), the rest of the line could be code (like [**Javascript**](/code/en/Javascript)). I validated the idea of this programming language with a great friend and colleague, who found it interesting and enthusiastic.
+
 <!--What do you think?-->
-
 <as-video url="https://www.youtube.com/embed/GuPJzq43FbY"></as-video>
 
-> As a curious fact, before thinking about [`YAML`](https://onmind.co/doc/code/en/YAML.md), the idea was originally conceived using as code editor a spreadsheet and its layout by columns (as an indentation), applying color to the cells with sentences.
+> As a curious fact, before thinking about [`YAML`](/code/en/YAML), the idea was originally conceived using as code editor a spreadsheet and its layout by columns (as an indentation), applying color to the cells with sentences.
 
 ## What is ABCode?
 
-> A language for many and a specification as a bridge.
+> A language for many environments and a specification as a bridge.
 
-It is a specification and interpreted programming language (created by Cesar A. Arcila) that combines the style of a markup language like [`YAML`](https://onmind.co/doc/code/en/YAML.md) with [`Python`](https://onmind.co/doc/code/en/Python.md) and some [`Javascript`](https://onmind.co/doc/code/en/Javascript.md), under the premise of being abstract and with an initial focus on server-side code, in order to generate (transpile) mainly [`Javascript`](https://onmind.co/doc/code/en/Javascript.md) and [`Python`](https://onmind.co/doc/code/en/Python.md) code, plus some other experimental language.
+It is a specification and interpreted programming language (created by Cesar A. Arcila) that combines the style of a markup language like [`YAML`](/code/en/YAML) with some [`Python`](/code/en/Python) and [`Javascript`](/code/en/Javascript), under the premise of being abstract and with an initial focus on server-side code, in order to generate (transpile) mainly [`Javascript`](/code/en/Javascript), perhaps some other experimental language as a dialect, variant or flavor (e.g. [`Python`](/code/en/Python)).
 
-`ABCode` supposes an additional layer to interact with different programming languages looking for a unifying or conciliatory sense, perhaps reducing it to two dialects with the same root.
+> It can be thought of as a **Typescript** with a peculiar style. It transpiles to [**Javascript**](/code/en/Javascript) with a look that mixes aspects of [**Python**](/code/en/Python) and [**YAML**](/code/en/YAML), oriented to business logic (use cases or core logic). 
 
-The initial strategy of `ABCode` is oriented where `Javascript` and `Python` operates, mainly in the **Backend**, that is, in the portability, replacing the last layer of code or persistence (database access).
+The initial strategy of `ABCode` is oriented where `Javascript` and `WebAssembly` operates (then `Python`), thinking mainly in the **Backend**, that is, in the portability or readability of business logic (use cases). It can also be seen as a replacement for the layer of code that promoted relational databases with stored procedures, for example, with **AWS Lambda**.
 
 In other words and in principle, you can associate `ABCode` with....
 
-> more internal logic (or persistence logic)  
+> more internal logic (domain or core logic)  
 > whose functions compose a **Backend**  
 > embedded and portable mode (also **script** mode)  
-> being invoked by another language or environment (or by itself)
+> being invoked by another language or environment, or by itself
 
-Each line of code starts with a reserved word or defined statement that would correspond to an attribute in [`YAML`](https://onmind.co/doc/code/en/YAML.md) with indentation, the rest of the line could be code close to [`Python`](https://onmind.co/doc/code/en/Python.md) and [`Javascript`](https://onmind.co/doc/code/en/Javascript.md).
+Each line of code starts with a reserved word or defined statement that would correspond to an attribute in [`YAML`](/code/en/YAML) with indentation, the rest of the line could be code close to [`Python`](/code/en/Python) and [`Javascript`](/code/en/Javascript).
+
+`ABCode` supposes an additional layer to interact with different programming languages looking for a unifying or conciliatory sense, perhaps in the future with dialects that share the same root, for example, think `abcode:py` or `abcode:go`.
 <!--In sophisticated terms but simplifying:
 
-> `ABCode` = `YAML` + `Python-Like` (also aliased `ABCode:py`)  
-> `ABCode:js` = `YAML` + `Javascript-Like` (for the visual aspect)
+> `ABCode` = `YAML` + `Javascript-Like`  
+> `ABCode:py` = `YAML` + `Python-Like`  
 
-![](./img/abcode-plus.png)
+![](https://assets.onmind.net/know/abcode-plus.png)
 
 > Think simply of two dialects with the same root, the difference basically consists in the functions used when targeting the browser (for **frontend**).-->
 
@@ -61,17 +64,17 @@ Each line of code starts with a reserved word or defined statement that would co
 > Multi-paradigm, multi-environment, multi-platform, multi-language translation.
 
 - `ABCode` is synonymous with the portability of your code.  
-- `ABCode` focuses in principle on server-side code (**backend**) combining [`YAML`](https://onmind.co/doc/code/en/YAML.md) with [`Python`](https://onmind.co/doc/code/en/Python.md) and some [`Javascript`](https://onmind.co/doc/code/en/Javascript.md), using a restricted syntax of these languages.
+- `ABCode` focuses in principle on server-side code (**backend**) combining [`YAML`](/code/en/YAML) with some [`Python`](/code/en/Python) and [`Javascript`](/code/en/Javascript), using a restricted syntax of these languages.
 - `ABCode` is intended to be easy to learn by being close to an algorithm. You can also make an agile transition when coming from a language like `Python`. On the other hand, `YAML` is an expressive and human-readable markup language, so `ABCode` is too. It may be advisable to check the `YAML` reference before starting but it is also not required.
 - `ABCode` is synonymous with the portability of your code.  
-- The `ABCode` language supports the [**OnMind Method**](https://onmind.co/web/blog/es/fundamentals.md) of the same author.
-- `ABCode` can alternatively function as a specification in which `YAML` is combined with another language (other than `Python`). This would seek to keep readability even if the implementation is specific to one language and not to many, and it also achieves customization when a technology requires the potential of a particular programming language.
+- The `ABCode` language supports the [**OnMind Method**](https://onmind.co/web/blog/es/fundamentals) and the [**OnMind-XDB**](/onmind/en/OnMind-XDB) database of the same author.
+- `ABCode` is projected to become alternatively work as a specification in which another language is transpiled. (other than `Javascript`). This would seek to keep readability even if the implementation is specific to one language and not to many, and it also achieves customization when a technology requires the potential of a particular programming language.
 - It can be thought of in the future as a translator or bridge between programming languages, environments and platforms, or multi-language, multi-environment and multi-platform, perhaps multi-purpose or multi-paradigm.
 - Modernization and innovation often involve technology migration, projects that can take years. With the use of `ABCode` the impact may be less, having the potential to facilitate the change between technologies (in principle, on the server side).
 - A great potential of this language can be found in projects with mixed technologies, allowing to add an abstract layer with a unifying sense. An application case is what is known as smart cities (**Smart Cities**), as well as for the operation with servers in the cloud (**DevOps**), or when thinking of incorporating machine learning (**Machine Learning**) with management software using a uniform semantics, or failing that, with a similar style for reading the work team. Perhaps we have the basis to explore in the future the case of the visual aspect (**frontend**).
-- Other languages would be in mind and may be introduced gradually on an experimental basis, but the goal is to keep mainly 2 or 3 official targets, i.e. `Python` and `Deno`, plus `ABCode:js` (the `ABCode` for the browser in `Javascript`). Already starting and preparing targets for experimental environments such as `Deno`, `Nodejs`, `Kotlin`, `Dart`, `Lua`, `Java`, `Ruby`, `Nim`, `Go`, `Swift` and `C#`.
-
-> **Python** is also a specification, which is why you can find projects that support this language. The above suggests that, for environments or experimental languages and as long as `ABCode` code in `Python` is achieved, the interested party can refer to the respective projects (`GraalVM`, `IronPython`, etc.).
+- Other languages would be in mind and may be introduced gradually on an experimental basis, but the goal is to keep mainly 2 or 3 official targets, i.e. `Node`, `Deno` and `WebAssembly`.
+<!--
+> **Python** is also a specification, which is why you can find projects that support this language. The above suggests that, for environments or experimental languages and as long as `ABCode` code in `Python` is achieved, the interested party can refer to the respective projects (`GraalVM`, `IronPython`, etc.).-->
 
 ### What other language for?
 
@@ -79,9 +82,11 @@ Each line of code starts with a reserved word or defined statement that would co
 
 I think the reason has been stated between the previous lines, but we can emphasize that it is sought to mitigate something... because of: **"the tower of Babel of Software "**.
 
-It is also understood that the idea has originated from requiring a level of abstraction or layer for a technology that also used components with generic orientation (the [**OnMind**](onmind.co) database and platform), in addition to supporting the [**OnMind Method**](https://onmind.co/web/blog/es/fundamentals.md). Surely others can identify a similar need as well as interest in something **multiplatform**, or perhaps observe the fatigue of the commercial and community battle over the best language or technology.
+It is also understood that the idea has originated from requiring a level of abstraction or layer for a technology that also used components with generic orientation (the [**OnMind**](https://onmind.co) database and platform), in addition to supporting the [**OnMind Method**](https://onmind.co/web/blog/es/fundamentals). Surely others can identify a similar need as well as interest in something **multiplatform**, or perhaps observe the fatigue of the commercial and community battle over the best language or technology.
 
-Personally, I would have to tell another part of the story. The platform I authored was built with `Javacript` and `Kotlin`. I then identified that if I were to involve **Machine Learning**, even **DevOps**, it would be great to learn `Python`. So I thought it might be useful to learn other languages and improve my skills in them by applying `ABCode`, and what was coded in [**OnMind**](onmind.co) could be left in `Javascript` and `Kotlin` respectively, being the new stuff introduced with `ABCode` (until it comes to replace `Javascript` in **Backend**). Thus, in [**OnMind**](onmind.co) `Kotlin` and `ABCode` (in **Backend**) would be used to complement projects and target environments, **oriented as a cross-platform technology**.
+> Unifying, embedding, porting code, integrating systems, maintaining a certain simplicity, contributing to agility, persisting business logic or use cases over time, reducing complexity by opening up to non-expert programmers, breaking certain current paradigms and IT doctrines by going back to basics, generating the corresponding impact wherever it is welcomed, are the reasons why **ABCode** was conceived.
+
+Personally, I would have to tell another part of the story. The platform I authored was built with `Javacript` and `Kotlin`. I then identified that if I were to involve **Machine Learning**, even **DevOps**, it would be great to learn `Python`. So I thought it might be useful to learn other languages and improve my skills in them by applying `ABCode`, and what was coded in [**OnMind**](https://onmind.co) could be left in `Javascript` and `Kotlin` respectively, being the business logic part introduced with `ABCode` (to the point of replacing that aspect in the **Backend**). Thus, in [**OnMind**](https://onmind.co) multiple languages and `ABCode` would be used to complement the target projects and environments, **oriented as a cross-platform technology**.
 
 ### How do you pronounce it?
 
@@ -491,7 +496,7 @@ On the other hand, instead of `fun:` use `sub: get(...) = ...` to define the fun
 <!--
 ## Database connection (MongoDB)
 
-To simplify the implementation and given its current popularity, the [**MongoDB**](https://onmind.co/doc/code/es/MongoDB.md) database engine is supported in principle and the database connection is implemented with the `dbc:` (Database Connection/Command/Client) statement, but the standard library must be imported first (using `use: mongodb`). Let's see an example...
+To simplify the implementation and given its current popularity, the [**MongoDB**](/code/es/MongoDB) database engine is supported in principle and the database connection is implemented with the `dbc:` (Database Connection/Command/Client) statement, but the standard library must be imported first (using `use: mongodb`). Let's see an example...
 
 ```yaml
 use: mongodb
@@ -506,7 +511,7 @@ Then `dbc: mydb := "test"` points to the specific database name (`test`) by assi
 -->
 ## Query pattern to database
 
-In the case of `ask:` we would look for a database query structure to be translated internally to `SQL` (Structured Query Language) keeping the `YAML` style and a pattern, using the database [**OnMind-XDB**](https://onmind.co/doc/code/en/OnMind-XDB.md). For example:
+In the case of `ask:` we would look for a database query structure to be translated internally to `SQL` (Structured Query Language) keeping the `YAML` style and a pattern, using the database [**OnMind-XDB**](/onmind/en/OnMind-XDB). For example:
 <!--
 ```yaml
   ask:
@@ -567,7 +572,7 @@ With `ask:` you would use `way:`, `what:`, `some:`, `with:`, `puts:`, `show:` or
     with: name = 'peter'
 ```
 
-Additionally, `dbc:` to indicate the specific connection, `keys:` to set named parameters corresponding to a key-value list (`{}`), `call:` to launch functions, `user:` and `auth:` to report user and session **token**. Also `from:` when it refers to a repository oriented with the [**OnMind Method**](https://onmind.co/web/blog/en/fundamentals.md).
+Additionally, `dbc:` to indicate the specific connection, `keys:` to set named parameters corresponding to a key-value list (`{}`), `call:` to launch functions, `user:` and `auth:` to report user and session **token**. Also `from:` when it refers to a repository oriented with the [**OnMind Method**](https://onmind.co/web/blog/en/fundamentals).
 
 ## Summary of language reserved words
 
@@ -692,9 +697,8 @@ Finally, the `ABCode:js` target language would be `Javascript`. This excludes th
 ### Why the ABCode:js language dialect?
 
 Simply one thing leads to another. `ABCode` starts with an emphasis on the server and proposes a conciliatory path for the browser. With `ABCode:js` the same philosophy is intended for the browser, reaching out to mobile devices as well. This could be unnecessary and you can use `Javascript` directly with the browser, but whoever likes the `ABCode` proposal and alternative can identify a useful standard for their work team. Surely this will open doors to other features not currently covered by `Javascript`, What do you think about [**"wasm"**](https://wasmtime.dev/)? (`WebAssembly`)
--->
 
-## Thinking in UI
+### Thinking in UI (for now just an idea)
 
 `page:` would in the future be the reserved word to represent a web component, while the rest of the program determines the functional logic (code) by compiling to `Javascript`. Let's see an example:
 
@@ -716,7 +720,7 @@ This layout is inspired by the [**hyperapp**](https://github.com/JorgeBucaran/hy
 
 > `view:` (the template) requires `tag:` with `name:`, `props:` and `slots:`, the latter can be derived in more nodes or tags (`tag:`) when instead of a text (`"..."`) it corresponds to a list (`[...]`).
 
-You can also think of using `html/js` directly instead of `ABCode`, in which case I bet for the library **Svelte** as it is close to `html`, or finally [**Riot**](https://onmind.co/doc/code/en/Riot.md) (for native web components). In any case the example could be translated into a template like the following:
+You can also think of using `html/js` directly instead of `ABCode`, in which case I bet for the library **Svelte** as it is close to `html`, or finally [**Riot**](/code/en/Riot) (for native web components). In any case the example could be translated into a template like the following:
 
 ```html
 <template is="my-button">
@@ -731,17 +735,18 @@ You can also think of using `html/js` directly instead of `ABCode`, in which cas
 ```
 
 > The expression `${expr}` would be used as escape, where `expr` is controlled by the internal mechanism or associated library.  
-> The differentiating factor of using `page:` would be to become to generate `WebAssembly`).
+> The differentiating factor of using `page:` would be to become to generate `WebAssembly`.
+-->
 
 ## Current status
 
 > Specification ready, work in progress, sponsors are welcome
 
-The present document is already a specification of the `ABCode` programming language proposed and elaborated by César Andrés Arcila Buitrago (© 2022 by César Arcila). In 2022, inside the platform [**OnMind**](//onmind. co) platform has a transpiler (translator from source language to another source language) as a proof of concept that allows to execute simple programs that do not require dependencies in `Python` and other languages or environments (`Deno`, `Nodejs`, `Kotlin`, `Dart`, `Lua`, `Java`, `Ruby`, `Nim`, `Go`, `Swift` and `C#`).
+The present document is already a specification of the `ABCode` programming language proposed and elaborated by César Andrés Arcila Buitrago (© 2022 by César Arcila). In 2022, inside the platform [**OnMind**](//onmind. co) platform has a transpiler (translator from source language to another source language) as a proof of concept that allows to execute simple programs that do not require dependencies, for some languages or environments (`Deno`, `Nodejs`).
 
 To write with `ABCode` you don't need a new application, that is, you use an editor (like `VSCode` or `Sublime` that you download from Internet) associating the `YAML` format with `.abc` extension files. However, an editor is already being prepared for better integration with the transpiler.
 
-![](https://onmind.co/assets/slides/abcode-edit.png)
+![](https://assets.onmind.net/know/abcode-edit.png)
 
 ### About the intention of support
 
@@ -751,17 +756,17 @@ If we talk about a technology that can become **Open Source** we would already b
 
 Item | Target | Level | Feature of Interest or Estrategy
 -- | -- | -- | --
-1 | NodeJS | 1 | Web Server and Microservices
+1 | NodeJS | 1 | Web Server and Microservices, AWS Lambda, CDK
 2 | Deno | 2 | Multiplataform, Typescript
-3 | Python | 2 | Multiparadigm, Machine Learning, DevOps, Web, IoT
+3 | Wasm (AssemblyScript) | 2 | WebAssembly based on Typescript (wasm)
 
-> `0` is reserved for direct compilation from `ABCode` in the future. `4` could correspond to `Lambdas`, `Kotlin`, `Go` or `WebAssembly` (it will be seen later).  
+> `0` is reserved for direct compilation from `ABCode` in the future. `4` could correspond to `Groovy` (JVM), then `Python`, perhaps `Lua` (it will be seen later).  
 <!--
 The priority target language for `ABCode` (or `ABCode:py`) is `Python`, then additional effort is estimated, for example, to obtain `wasm` (**WebAssembly**), `Typescript/JS` or a binary.
 
 Item | Target | Level | Feature of Interest or Estrategy
 -- | -- | -- | --
-1 | NodeJS | 1 | Web Server and Microservices
+1 | NodeJS | 1 | Web Server and Microservices, AWS Lambda, CDK
 2 | Deno | 2 | Multiplataform, Typescript
 3 | Kotlin | 3 | JVM (Cross-Platform) and Mobile (Native)
 4 | Python | 3 | Multiparadigm, Machine Learning, DevOps, Web, IoT
@@ -769,14 +774,15 @@ Item | Target | Level | Feature of Interest or Estrategy
 
 > These targets are oriented to **backend** and correspond to `ABCode:py` (including items 2, 3, 5).
 -->
-#### Origins that count as much as the targets
+#### Sources that count as much as the targets
 
-Since the initial strategy of `ABCode` is to operate as a portable and embedded language in another language or in an environment highlighted for **Backend**, it should be understood that it could be used from `PHP`, `NodeJS`, `Java`, `C`, `Python`, `Ruby`, `Dart`, `Deno`, `Rust`, `Go`, `Swift`, `Kotlin`, `C#`, `Pascal`, `PostgreSQL` and perhaps more.
+Since the initial strategy of `ABCode` is to operate as a portable and embedded language in another language (e.g. using **quickjs**) or in an environment highlighted for **Backend**, it should be understood that it could become to used from `PHP`, `NodeJS`, `Java`, `C`, `Python`, `Ruby`, `Dart`, `Deno`, `Rust`, `Go`, `Swift`, `Kotlin`, `C#`, `Pascal`, `PostgreSQL` and perhaps more through rutime environments.
+
+> It would not only be a matter of thinking about the **destination** (target) but also about the possibilities of **sources** languages and environments that integrate `wasm` (**WebAssembly**) or `quickjs`.
+
 <!--
-> It would not only be a matter of thinking about the **destination** (target) but also about the possibilities of **originating** languages and environments that integrate `wasm` (**WebAssembly**).
--->
-Python is also a specification, which is why you can find projects that host this language in an environment (such as `GraalVM`, `Jython`, `IronPython`, `Python.Net`, `PyScript`), or translate `Python` to another language (such as: `transcrypt`, `javascripthon`, `pscript`, `py2many`, `py2rb`, `py2php`, `py2dart`, `pytocs`, `py2nim`, `rustpython`, [`pytago`](https://github.com/nottheswimmer/pytago), `peryton`, `python-lua`, `scoder/lupa`, `dragon/haxe`, [`prometeo`](https://github.com/zanellia/prometeo)), and some project for mobile devices (such as `BeeWare`, `Kivy`).
-<!--
+It is thought that `Python` will become a native target being also a specification, which is why you can find projects that host this language in an environment (such as `GraalVM`, `Jython`, `IronPython`, `Python.Net`, `PyScript`), or translate `Python` to another language (such as: `transcrypt`, `javascripthon`, `pscript`, `py2many`, `py2rb`, `py2php`, `py2dart`, `pytocs`, `py2nim`, `rustpython`, [`pytago`](https://github.com/nottheswimmer/pytago), `peryton`, [`python-lua`](https://github.com/dmitrii-eremin/python-lua), `scoder/lupa`, `dragon/haxe`, [`prometeo`](https://github.com/zanellia/prometeo)), and some project for mobile devices (such as `BeeWare`, `Kivy`).
+
 #### Other targets to consider
 
 Item | Target | Level | Feature of Interest or Estrategy
@@ -802,7 +808,7 @@ As for other languages, it is considered that the strategy has a more than suffi
 -->
 ### The technical advance
 
-As a technical detail, a package manager is not required (as this is left to each target language) but neither has a standard library or official **SDK** of the language been implemented. However, some essential software has started to be reviewed with a very specific simple and lightweight library (example: `Bottle`). Web applications are considered for some `API` of classic or flat mode (without requiring library), that is, a main controller (`endpoint`) without `url` routing (it would be done by `POST` with parameter indicating the function to invoke and a token for security), so it can be implemented natively for several languages, leaving open for the programmer the faculty to add some technology (**Framework** or Library) when it is needed.
+As a technical detail, a package manager is not required (as this is left to each target language) but neither has a standard library or official **SDK** of the language been implemented. However, some essential software has started to be reviewed with a very specific simple and lightweight library. Web applications are considered for some `API` of classic or flat mode (without requiring library), that is, a main controller (`endpoint`) without `url` routing (it would be done by `POST` with parameter indicating the function to invoke and a token for security), so it can be implemented in standard way.
 
 Although the transpiler code to be produced is expected to be released under Open Source license, it has not yet been published in Internet repositories (for example in `GitHub`) and this may change until the last moment (perhaps by `Apache` or other license). 
 
@@ -813,8 +819,8 @@ I already came from producing a platform that has cost a huge investment (time, 
 > We are looking for ways of income that are welcome to support this work.  
 > Specs ready, Work In Progress, Let's...
 
-![](https://onmind.co/assets/slides/abcode-logo.png)
+![](https://assets.onmind.net/know/abcode-logo.png)
 
 ---
 
-> © 2021-2023 by César Arcila
+> © 2021-2025 by César Andres Arcila Buitrago
