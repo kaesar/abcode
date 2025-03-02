@@ -1,0 +1,14 @@
+/run
+/abcodec
+/abcodec-mac
+/abcodec.exe
+/abcodec*.zip
+/abcodejs/*
+!abcodejs/abcode.js
+!abcodejs/abctest.js
+!abcodejs/node.js
+!abcodejs/deno.js
+!abcodejs/wasm.js
+/run/*
+!run/hello.js
+/vendor

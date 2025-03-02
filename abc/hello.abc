@@ -1,0 +1,4 @@
+fun: myFunction()
+  echo: "Hello there!"
+
+run: myFunction()

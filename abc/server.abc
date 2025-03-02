@@ -1,0 +1,13 @@
+use: api
+
+web: :server = app
+
+sub: get("/") = index
+  web: :handle = {"hello":"there!"}
+
+fun: main()
+  web: :routes
+  web: :listen = 8000
+  echo: "Server ready to listening..." + 8000
+
+run: main()
