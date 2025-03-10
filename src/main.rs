@@ -122,7 +122,12 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
     // Read the script file and combine it with the pre-header and header
     let script_code = fs::read_to_string(script_file).unwrap();
     let compiler = format!("{}{}{}", pre_header_code, header_code, transpiler_code);
-    fs::write("./run/abcodec.js", &compiler).unwrap();  // Save the compiler for debugging
+    
+    // Save the compiler for debugging
+    match fs::write("./run/abcodec.js", &compiler) {
+        Ok(_) => todo!(),
+        Err(e) => eprintln!("ERROR: Trying writing debugger {}", e),
+    };
 
     // Message for the user
     print!("Compiling... {}", script_file);
@@ -193,5 +198,8 @@ fn compile_target(target: i32, file: &str) {
 
     // Save the shell script
     let shell = "./run/abctest.sh";
-    fs::write(shell, compiler).unwrap();
+    match fs::write(shell, compiler) {
+        Ok(_) => todo!(),
+        Err(e) => eprintln!("ERROR: Trying writing test {}", e),
+    };
 }
