@@ -58,13 +58,13 @@ fn main() {
 fn get_new_file(target: i32, script_file: &str) -> String {
     // Set extension according to the target
     let extension = match target {
-        1 => ".js",    // Node.js
-        2 => ".ts",    // Deno
-        3 => ".ts",    // Wasm (AssemblyScript)
-        4 => ".py",    // Python
-        5 => ".ts",    // Lua (TSTL)
-        6 => ".kt",    // Kotlin
-        _ => ".js",    // Por defecto
+        1 => ".js",  // Node.js
+        2 => ".ts",  // Deno
+        3 => ".ts",  // Wasm (AssemblyScript)
+        4 => ".py",  // Python
+        5 => ".ts",  // Lua (TSTL)
+        6 => ".kt",  // Kotlin
+        _ => ".js",  // Por defecto
     };
 
     // Replace first "abc" with "run"
@@ -125,7 +125,7 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
     
     // Save the compiler for debugging
     match fs::write("./run/abcodec.js", &compiler) {
-        Ok(_) => todo!(),
+        Ok(_) => print!(""),
         Err(e) => eprintln!("ERROR: Trying writing debugger {}", e),
     };
 
@@ -199,7 +199,7 @@ fn compile_target(target: i32, file: &str) {
     // Save the shell script
     let shell = "./run/abctest.sh";
     match fs::write(shell, compiler) {
-        Ok(_) => todo!(),
+        Ok(_) => print!(""),
         Err(e) => eprintln!("ERROR: Trying writing test {}", e),
     };
 }
