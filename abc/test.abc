@@ -25,7 +25,7 @@ fun: main()
   #run: db()
   var: z = [1, 2, 3]
   for: i in range(0,len(z))
-    if: i == 1
+    if: i === 1
       echo: i
   web: :routes
   web: :listen = port

@@ -17,5 +17,24 @@ Just download and uncompress according to your system and run something like...
 > Go to [`ABCode`](https://onmind.co/doc/code/en/ABCode.md) topic in my blog.
 
 ---
+<!--
+Compiling with `cargo` and running...
+
+```bash
+cargo run -- -s abc/hello.abc -t 6
+cargo build --release && ./target/release/abcodec -s abc/hello.abc -t 6
+```
+
+Prepare for building...
+
+```bash
+rustup target add aarch64-apple-darwin
+rustup target add x86_64-pc-windows-msvc
+rustup target add x86_64-unknown-linux-gnu
+rustup target add aarch64-unknown-linux-gnu
+```
+
+Building script with: `build.sh`
+-->
 
 > © 2021-2025 by César Andres Arcila Buitrago

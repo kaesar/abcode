@@ -11,7 +11,7 @@ struct Asset;
 fn main() {
     // Setting Clap for command line arguments
     let matches = Command::new("abcodec")
-        .version("0.3.0")
+        .version("0.4.0")
         .about("ABCode Compiler (Transpiler)")
         .arg(
             Arg::new("target")
@@ -19,7 +19,7 @@ fn main() {
                 .long("target")
                 .value_parser(clap::value_parser!(i32))
                 .default_value("1")
-                .help("Target language or runtime: 1. Node.js, 2. Deno, 3. Wasm, 4. Python, 5. Lua, 6. Kotlin"),
+                .help("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (POJO/JBang), 6. Python"),  // 7. Lua (TSTL)
         )
         .arg(
             Arg::new("script")
@@ -47,7 +47,7 @@ fn main() {
 
     // Main logic: In case of target > 6, it shows the target options
     if target > 6 {
-        println!("Target language or runtime: 1. Node.js, 2. Deno, 3. Wasm, 4. Python, 5. Lua, 6. Kotlin");
+        println!("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (POJO/JBang), 6. Python");  // 7. Lua (TSTL)
     } else {
         get_plain_js(target, script, plan);
     }
@@ -58,13 +58,14 @@ fn main() {
 fn get_new_file(target: i32, script_file: &str) -> String {
     // Set extension according to the target
     let extension = match target {
-        1 => ".js",  // Node.js
-        2 => ".ts",  // Deno
-        3 => ".ts",  // Wasm (AssemblyScript)
-        4 => ".py",  // Python
-        5 => ".ts",  // Lua (TSTL)
-        6 => ".kt",  // Kotlin
-        _ => ".js",  // Por defecto
+        1 => ".js",   // NodeJS/Bun
+        2 => ".ts",   // Deno
+        3 => ".ts",   // Wasm (AssemblyScript)
+        4 => ".kt",   // Kotlin
+        5 => ".java", // Java/SpringBoot
+        6 => ".py",   // Python
+        // 7 => ".ts",   // Lua (TSTL)
+        _ => ".js",   // Por defecto
     };
 
     // Replace first "abc" with "run"
@@ -109,9 +110,10 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
         1 => "node.js",
         2 => "deno.js",
         3 => "wasm.js",
-        4 => "python.js",
-        5 => "lua.js",
-        6 => "kotlin.js",
+        4 => "kotlin.js",
+        5 => "java.js",
+        6 => "python.js",
+        // 7 => "lua.js",
         _ => "node.js",
     };
     let transpiler_bytes = Asset::get(transpiler_file).unwrap_or_else(|| {
@@ -156,14 +158,34 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
     let code = result.as_string().unwrap().to_std_string().unwrap();
     let console_messages = get_console_messages!(context);
 
-    // Show the result and save it in the new file
-    println!(" Ok!\nGenerating... {}", newfile);
+    // Show the result
+    println!(" Ok!");
     println!("---\n{} \n", console_messages);
+    
+    // For Java/Kotlin target, check if a class name was specified
+    let mut custom_file = None;
+    if target == 4 || target == 5 {
+        if let Some(class_name_pos) = console_messages.find("@CLASSNAME:") {
+            let class_name_start = class_name_pos + "@CLASSNAME:".len();
+            if let Some(class_name_end) = console_messages[class_name_start..].find('\n') {
+                let class_name = &console_messages[class_name_start..class_name_start + class_name_end];
+                
+                // Use the correct extension based on target
+                let extension = if target == 4 { ".kt" } else { ".java" };
+                let new_file_path = format!("./run/{}{}", class_name, extension);
+                custom_file = Some(new_file_path);
+            }
+        }
+    }
+    
+    // Use custom file path if found, otherwise use default
+    let final_file = custom_file.as_deref().unwrap_or(&newfile);
+    println!("Generating... {}", final_file);
     println!("---\n{}", code);
-    fs::write(&newfile, &code).unwrap();
+    fs::write(final_file, &code).unwrap();
 
     // Generate the shell script for compiling the new file
-    compile_target(target, &newfile);
+    compile_target(target, final_file);
 }
 
 fn compile_target(target: i32, file: &str) {
@@ -182,16 +204,20 @@ fn compile_target(target: i32, file: &str) {
             return;
         }
         4 => {
+            println!("INFO => You must include \"-cp path/javalib/*\" or use \"gradle\" (even \"maven\") if it is a WebServer");
+            format!("kotlinc {} -include-runtime -cp ../javalib/javalin-5.0.1.jar -d {}", file, file.replace(".kt", ".jar"))
+        }
+        5 => {
+            println!("INFO => Unless using JBang, you must include \"-cp path/javalib/*\" or use \"gradle\" (even \"maven\") if it is a WebServer");
+            format!("jbang {}", file)
+        }
+        6 => {
             println!("INFO => You must install first \"pip install bottle\" if it is a WebServer");
             format!("python {}", file)
         }
-        5 => {
+        7 => {
             println!("INFO => try \"cd run & npx tstl {}\" with your environment", file.replace("run/", ""));
             return;
-        }
-        6 => {
-            println!("INFO => You must include \"-cp path/javalib/*\" or use \"gradle\" (even \"maven\") if it is a WebServer");
-            format!("kotlinc {} -include-runtime -cp ../javalib/javalin-5.0.1.jar -d {}", file, file.replace(".kt", ".jar"))
         }
         _ => return,
     };

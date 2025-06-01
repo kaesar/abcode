@@ -1,3 +1,4 @@
+# @class Hello
 fun: myFunction()
   echo: "Hello there!"
 
