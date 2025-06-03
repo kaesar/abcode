@@ -19,7 +19,7 @@ fn main() {
                 .long("target")
                 .value_parser(clap::value_parser!(i32))
                 .default_value("1")
-                .help("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (POJO/JBang), 6. Python"),  // 7. Lua (TSTL)
+                .help("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go"),  // 8. Lua (TSTL)
         )
         .arg(
             Arg::new("script")
@@ -47,7 +47,7 @@ fn main() {
 
     // Main logic: In case of target > 6, it shows the target options
     if target > 6 {
-        println!("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (POJO/JBang), 6. Python");  // 7. Lua (TSTL)
+        println!("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go");  // 8. Lua (TSTL)
     } else {
         get_plain_js(target, script, plan);
     }
@@ -64,7 +64,8 @@ fn get_new_file(target: i32, script_file: &str) -> String {
         4 => ".kt",   // Kotlin
         5 => ".java", // Java/SpringBoot
         6 => ".py",   // Python
-        // 7 => ".ts",   // Lua (TSTL)
+        7 => ".go",   // GoLang
+        // 8 => ".ts",   // Lua (TSTL)
         _ => ".js",   // Por defecto
     };
 
@@ -113,7 +114,8 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
         4 => "kotlin.js",
         5 => "java.js",
         6 => "python.js",
-        // 7 => "lua.js",
+        7 => "go.js",
+        // 8 => "lua.js",
         _ => "node.js",
     };
     let transpiler_bytes = Asset::get(transpiler_file).unwrap_or_else(|| {

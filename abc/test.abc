@@ -4,7 +4,7 @@ use: api
 
 web: :server = app
 
-sub: get("/") = index
+do: get("/") = index
   web: :handle = {"hello":"there!"}
 
 fun: suma(a:int, b:int):int
@@ -18,14 +18,14 @@ fun: db()
   #send: dbc
 
 fun: main()
-  let: x = suma(1, 2)
+  var!: x = suma(1, 2)
   echo: x
-  let: port:int = 8000
+  var!: port:int = 8000
   echo: port
   #run: db()
   var: z = [1, 2, 3]
   for: i in range(0,len(z))
-    if: i === 1
+    if: i == 1
       echo: i
   web: :routes
   web: :listen = port

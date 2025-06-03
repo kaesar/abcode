@@ -2,7 +2,7 @@ use: api
 
 web: :server = app
 
-sub: get("/") = index
+do: get("/") = index
   web: :handle = {"hello":"there!"}
 
 fun: main()

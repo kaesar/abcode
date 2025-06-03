@@ -1,5 +1,8 @@
-# @class Hello
+goal: any
+#type: Hello
+
 fun: myFunction()
   echo: "Hello there!"
+  like: System.out.print("Hola mundo") #in: java
 
 run: myFunction()
