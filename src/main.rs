@@ -10,6 +10,7 @@ struct Asset;
 
 fn main() {
     // Setting Clap for command line arguments
+    let targets = "Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go";  // 8. Lua (TSTL)
     let matches = Command::new("abcodec")
         .version("0.4.0")
         .about("ABCode Compiler (Transpiler)")
@@ -19,7 +20,7 @@ fn main() {
                 .long("target")
                 .value_parser(clap::value_parser!(i32))
                 .default_value("1")
-                .help("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go"),  // 8. Lua (TSTL)
+                .help(targets)
         )
         .arg(
             Arg::new("script")
@@ -47,7 +48,7 @@ fn main() {
 
     // Main logic: In case of target > 6, it shows the target options
     if target > 6 {
-        println!("Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go");  // 8. Lua (TSTL)
+        println!("{}", targets);
     } else {
         get_plain_js(target, script, plan);
     }
@@ -156,8 +157,26 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
     let plan_val = JsValue::String(plan.into());
     let args = vec![script_code_val, plan_val];
 
-    let result = start_fn.call(&JsValue::Undefined, &args, &mut context).unwrap();
-    let code = result.as_string().unwrap().to_std_string().unwrap();
+    let result = match start_fn.call(&JsValue::Undefined, &args, &mut context) {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("\nERROR! {}", err);
+            eprintln!("       This could be an error in your code.");
+            eprintln!("       Please, check your syntax in: {}", script_file);
+            return;
+        }
+    };
+    
+    let code = match result.as_string() {
+        Some(js_string) => js_string.to_std_string().unwrap_or_else(|_| {
+            eprintln!("\nERROR: Could not convert the result to an UTF-8 string");
+            String::new()
+        }),
+        None => {
+            eprintln!("\nERROR: Compiler did not return a valid string");
+            String::new()
+        }
+    };
     let console_messages = get_console_messages!(context);
 
     // Show the result

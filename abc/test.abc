@@ -9,18 +9,18 @@ do: get("/") = index
 
 fun: suma(a:int, b:int):int
   echo: "sumando..."
-  send: a + b
+  pass: a + b
 
 fun: db()
   dbc: :link = "mongodb://localhost:27017/xy"
   dbc: mydb := "xy"
   echo: "Database connected!"
-  #send: dbc
+  #pass: dbc
 
 fun: main()
-  var!: x = suma(1, 2)
+  val: x = suma(1, 2)
   echo: x
-  var!: port:int = 8000
+  val: port:int = 8000
   echo: port
   #run: db()
   var: z = [1, 2, 3]

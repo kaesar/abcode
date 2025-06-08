@@ -1,0 +1,91 @@
+# TODO List API with ABCode
+
+# Generic import for API
+use: @api
+
+set: Todo
+  id: string
+  title: string
+  completed: boolean
+
+# Init Web Server
+web: @server = app
+
+val: todos = []
+val: nextId = 1
+
+# Methods...
+do: get("/todos") = listTodos
+  web: @handle = todos
+
+do: get("/todos/:id") = getTodo
+  var: id = r.params.id
+  var: todo = todos.find(t => t.id == id)
+  
+  if: todo
+    web: @handle = todo
+  else:
+    #web: :status = 404
+    web: @handle = {"error": "Todo not found"}
+
+do: post("/todos") = createTodo
+  var: title = r.body.title
+  
+   if: !title
+     #web: :status = 400
+     web: @handle = {"error": "Title is required"}
+     pass: "ok"
+  
+  var: todo = {
+    "id": nextId.toString(),
+    "title": title,
+    "completed": false
+  }
+  
+  run: todos.push(todo)
+  run: nextId = nextId + 1
+  
+  #web: :status = 201
+  web: @handle = todo
+
+do: put("/todos/:id") = updateTodo
+  var: id = r.params.id
+  var: index = todos.findIndex(t => t.id == id)
+  
+  if: index < 0
+    #web: :status = 404
+    web: @handle = {"error": "Todo not found"}
+    pass: "o"
+  
+  var: title = r.body.title
+  var: completed = r.body.completed
+  
+  if: title
+    run: todos[index].title = title
+  
+  if: completed != undefined
+    run: todos[index].completed = completed
+  
+  web: @handle = todos[index]
+
+do: delete("/todos/:id") = deleteTodo
+  var: id = r.params.id
+  var: index = todos.findIndex(t => t.id == id)
+  
+  if: index < 0
+    #web: :status = 404
+    web: @handle = {"error": "Todo not found"}
+    pass: "ok"
+  
+  run: todos.splice(index, 1)
+  #web: :status = 204
+  web: @handle = {}
+
+# Start the web server
+fun: main()
+  echo: "TODO List API server starting on port {port:4}"
+  val: port = 3000
+  web: @listen = port
+
+# Main function
+run: main()
