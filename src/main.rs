@@ -10,7 +10,7 @@ struct Asset;
 
 fn main() {
     // Setting Clap for command line arguments
-    let targets = "Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go";  // 8. Lua (TSTL)
+    let targets = "Target language or runtime:\n1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go, 8. Lua (TSTL)";
     let matches = Command::new("abcodec")
         .version("0.4.0")
         .about("ABCode Compiler (Transpiler)")
@@ -46,8 +46,8 @@ fn main() {
         std::env::consts::OS
     );
 
-    // Main logic: In case of target > 6, it shows the target options
-    if target > 6 {
+    // Main logic: In case of target > 8, it shows the target options
+    if target > 8 {
         println!("{}", targets);
     } else {
         get_plain_js(target, script, plan);
@@ -66,7 +66,7 @@ fn get_new_file(target: i32, script_file: &str) -> String {
         5 => ".java", // Java/SpringBoot
         6 => ".py",   // Python
         7 => ".go",   // GoLang
-        // 8 => ".ts",   // Lua (TSTL)
+        8 => ".ts",   // TypeScriptToLua (TSTL/Lua)
         _ => ".js",   // Por defecto
     };
 
@@ -116,7 +116,7 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
         5 => "java.js",
         6 => "python.js",
         7 => "go.js",
-        // 8 => "lua.js",
+        8 => "tstl.js",
         _ => "node.js",
     };
     let transpiler_bytes = Asset::get(transpiler_file).unwrap_or_else(|| {
@@ -237,6 +237,10 @@ fn compile_target(target: i32, file: &str) {
             format!("python {}", file)
         }
         7 => {
+            println!("INFO => try \"cd run & go run {}\" with your environment", file.replace("run/", ""));
+            return;
+        }
+        8 => {
             println!("INFO => try \"cd run & npx tstl {}\" with your environment", file.replace("run/", ""));
             return;
         }
