@@ -10,9 +10,9 @@ struct Asset;
 
 fn main() {
     // Setting Clap for command line arguments
-    let targets = "Target language or runtime: 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go";  // 8. Lua (TSTL)
+    let targets = "Target language or runtime:\n0. Rust (binary), 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go, 8. PHP, 9. C# (.NET)";
     let matches = Command::new("abcodec")
-        .version("0.4.0")
+        .version("0.5.0")
         .about("ABCode Compiler (Transpiler)")
         .arg(
             Arg::new("target")
@@ -46,8 +46,8 @@ fn main() {
         std::env::consts::OS
     );
 
-    // Main logic: In case of target > 6, it shows the target options
-    if target > 6 {
+    // Main logic: In case of target > 9, it shows the target options
+    if target > 9 {
         println!("{}", targets);
     } else {
         get_plain_js(target, script, plan);
@@ -59,6 +59,7 @@ fn main() {
 fn get_new_file(target: i32, script_file: &str) -> String {
     // Set extension according to the target
     let extension = match target {
+        0 => ".rs",   // Rust
         1 => ".js",   // NodeJS/Bun
         2 => ".ts",   // Deno
         3 => ".ts",   // Wasm (AssemblyScript)
@@ -66,7 +67,8 @@ fn get_new_file(target: i32, script_file: &str) -> String {
         5 => ".java", // Java/SpringBoot
         6 => ".py",   // Python
         7 => ".go",   // GoLang
-        // 8 => ".ts",   // Lua (TSTL)
+        8 => ".php",  // PHP
+        9 => ".cs",   // C#
         _ => ".js",   // Por defecto
     };
 
@@ -92,7 +94,7 @@ macro_rules! get_console_messages {
             .as_callable()
             .unwrap();
         let console_messages_result = console_messages_fn
-            .call(&JsValue::Undefined, &[], &mut $context)
+            .call(&JsValue::undefined(), &[], &mut $context)
             .unwrap();
         console_messages_result.as_string().unwrap().to_std_string().unwrap()
     }};
@@ -109,6 +111,7 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
 
     // Load the transpiler file according to the target
     let transpiler_file = match target {
+        0 => "rust.js",
         1 => "node.js",
         2 => "deno.js",
         3 => "wasm.js",
@@ -116,7 +119,8 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
         5 => "java.js",
         6 => "python.js",
         7 => "go.js",
-        // 8 => "lua.js",
+        8 => "php.js",
+        9 => "csharp.js",
         _ => "node.js",
     };
     let transpiler_bytes = Asset::get(transpiler_file).unwrap_or_else(|| {
@@ -125,7 +129,11 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
     let transpiler_code = String::from_utf8(transpiler_bytes.to_vec()).unwrap();
 
     // Read the script file and combine it with the pre-header and header
-    let script_code = fs::read_to_string(script_file).unwrap();
+    let script_code = fs::read_to_string(script_file).unwrap_or_else(|e| {
+        eprintln!("ERROR: Could not read script file {}: {}", script_file, e);
+        eprintln!("       Check if the file exists and you have read permissions");
+        std::process::exit(1);
+    });
     let compiler = format!("{}{}{}", pre_header_code, header_code, transpiler_code);
     
     // Save the compiler for debugging
@@ -153,11 +161,11 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
         .as_callable()
         .unwrap();
 
-    let script_code_val = JsValue::String(script_code.into());
-    let plan_val = JsValue::String(plan.into());
+    let script_code_val = JsValue::new(JsString::from(script_code));
+    let plan_val = JsValue::new(JsString::from(plan));
     let args = vec![script_code_val, plan_val];
 
-    let result = match start_fn.call(&JsValue::Undefined, &args, &mut context) {
+    let result = match start_fn.call(&JsValue::undefined(), &args, &mut context) {
         Ok(value) => value,
         Err(err) => {
             eprintln!("\nERROR! {}", err);
@@ -183,16 +191,21 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
     println!(" Ok!");
     println!("---\n{} \n", console_messages);
     
-    // For Java/Kotlin target, check if a class name was specified
+    // For Java/Kotlin/C# target, check if a class name was specified
     let mut custom_file = None;
-    if target == 4 || target == 5 {
+    if target == 4 || target == 5 || target == 9 {
         if let Some(class_name_pos) = console_messages.find("@CLASSNAME:") {
             let class_name_start = class_name_pos + "@CLASSNAME:".len();
             if let Some(class_name_end) = console_messages[class_name_start..].find('\n') {
                 let class_name = &console_messages[class_name_start..class_name_start + class_name_end];
                 
                 // Use the correct extension based on target
-                let extension = if target == 4 { ".kt" } else { ".java" };
+                let extension = match target {
+                    4 => ".kt",
+                    5 => ".java",
+                    9 => ".cs",
+                    _ => ".java"
+                };
                 let new_file_path = format!("./run/{}{}", class_name, extension);
                 custom_file = Some(new_file_path);
             }
@@ -203,7 +216,18 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
     let final_file = custom_file.as_deref().unwrap_or(&newfile);
     println!("Generating... {}", final_file);
     println!("---\n{}", code);
-    fs::write(final_file, &code).unwrap();
+    
+    // Ensure the directory exists before writing
+    if let Some(parent) = std::path::Path::new(final_file).parent() {
+        fs::create_dir_all(parent).unwrap_or_else(|e| {
+            eprintln!("ERROR: Could not create directory {:?}: {}", parent, e);
+        });
+    }
+    
+    fs::write(final_file, &code).unwrap_or_else(|e| {
+        eprintln!("ERROR: Could not write file {}: {}", final_file, e);
+        eprintln!("       Check if the directory exists and you have write permissions");
+    });
 
     // Generate the shell script for compiling the new file
     compile_target(target, final_file);
@@ -211,6 +235,10 @@ fn get_plain_js(target: i32, script_file: &str, plan: &str) {
 
 fn compile_target(target: i32, file: &str) {
     let compiler = match target {
+        0 => {
+            println!("INFO => try \"cd run & cargo run\" with your environment");
+            return;
+        }
         1 => {
             println!("INFO => You must include first a \"package.json\" file with \"restana\" module if it is a WebServer");
             format!("node {}", file)
@@ -237,7 +265,15 @@ fn compile_target(target: i32, file: &str) {
             format!("python {}", file)
         }
         7 => {
-            println!("INFO => try \"cd run & npx tstl {}\" with your environment", file.replace("run/", ""));
+            println!("INFO => try \"cd run & go run {}\" with your environment", file.replace("run/", ""));
+            return;
+        }
+        8 => {
+            println!("INFO => You must install first \"composer install\" if it is a WebServer");
+            format!("php {}", file)
+        }
+        9 => {
+            println!("INFO => try \"cd run & dotnet run\" with your environment");
             return;
         }
         _ => return,
