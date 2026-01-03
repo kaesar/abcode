@@ -1,0 +1,97 @@
+{
+  "name": "abcode",
+  "scopeName": "source.abcode",
+  "fileTypes": ["abc"],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#directives"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#functions"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.abcode",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "keyword.control.abcode",
+          "match": "\\b(goal|type|fun|if|when|else|for|do|try|fail|use|run|pass|var|val|set|echo|read|save|web|dbc|like|form|plug|case|each|file):"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.abcode",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.abcode",
+              "match": "\\\\."
+            },
+            {
+              "name": "variable.other.interpolation.abcode",
+              "begin": "\\{",
+              "end": "\\}",
+              "patterns": [
+                {
+                  "name": "variable.other.abcode",
+                  "match": "[^:}]+"
+                },
+                {
+                  "name": "constant.other.format.abcode",
+                  "match": ":[^}]+"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.abcode",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.abcode",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.abcode",
+          "match": "\\b\\d+(?:\\.\\d+)?\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.abcode",
+          "match": "\\b(System\\.out\\.print|System\\.out\\.println|console\\.log|print|println|puts|fmt\\.Println)\\b"
+        }
+      ]
+    }
+  }
+}

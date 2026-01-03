@@ -1,0 +1,11 @@
+[package]
+name = "abcodeweb"
+version = "0.1.0"
+edition = "2024"
+description = "ABCode Web Interface - Compile and preview ABCode online"
+
+[dependencies]
+feather = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+abcodelib = { path = "../abcodelib" }

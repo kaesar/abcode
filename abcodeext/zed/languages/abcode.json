@@ -1,0 +1,24 @@
+{
+  "name": "ABCode",
+  "grammar": "abcode",
+  "path_suffixes": ["abc"],
+  "line_comments": ["# "],
+  "autoclose": {
+    "before": ";:.,=}])>\"'`",
+    "brackets": {
+      "(": ")",
+      "[": "]",
+      "{": "}",
+      "\"": "\"",
+      "'": "'"
+    }
+  },
+  "brackets": [
+    { "start": "(", "end": ")", "close": true, "newline": false },
+    { "start": "[", "end": "]", "close": true, "newline": false },
+    { "start": "{", "end": "}", "close": true, "newline": true }
+  ],
+  "word_characters": ["_"],
+  "soft_tabs": true,
+  "tab_size": 2
+}

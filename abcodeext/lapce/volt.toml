@@ -1,0 +1,28 @@
+{
+  "name": "abcode-language-support",
+  "display_name": "ABCode Language Support",
+  "author": "ABCode Team",
+  "version": "1.0.0",
+  "description": "Syntax highlighting for ABCode programming language",
+  "repository": "https://github.com/kaesar/abcode",
+  "wasm": false,
+  "activation": [
+    {
+      "language": "abcode",
+      "path": "."
+    }
+  ],
+  "language": [
+    {
+      "name": "abcode",
+      "extensions": ["abc"],
+      "comment": "#",
+      "tab_size": 2,
+      "line_ending": "\n",
+      "indent": {
+        "tab_size": 2,
+        "unit": "  "
+      }
+    }
+  ]
+}

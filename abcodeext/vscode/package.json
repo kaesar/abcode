@@ -1,0 +1,23 @@
+{
+  "name": "abcode-language-support",
+  "displayName": "ABCode Language Support",
+  "description": "Syntax highlighting for ABCode programming language",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [{
+      "id": "abcode",
+      "aliases": ["ABCode", "abcode"],
+      "extensions": [".abc"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "abcode",
+      "scopeName": "source.abcode",
+      "path": "./syntaxes/abcode.tmLanguage.json"
+    }]
+  }
+}

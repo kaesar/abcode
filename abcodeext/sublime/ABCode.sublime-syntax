@@ -1,0 +1,56 @@
+%YAML 1.2
+---
+name: ABCode
+file_extensions:
+  - abc
+scope: source.abcode
+
+contexts:
+  main:
+    - include: comments
+    - include: directives
+    - include: strings
+    - include: numbers
+    - include: functions
+
+  comments:
+    - match: '#.*$'
+      scope: comment.line.number-sign.abcode
+
+  directives:
+    - match: '\b(goal|type|fun|if|when|else|for|do|try|fail|use|run|pass|var|val|set|echo|read|save|web|dbc|like|form|plug|case|each|file):'
+      scope: keyword.control.abcode
+
+  strings:
+    - match: '"'
+      scope: punctuation.definition.string.begin.abcode
+      push: double_quoted_string
+    - match: "'"
+      scope: punctuation.definition.string.begin.abcode
+      push: single_quoted_string
+
+  double_quoted_string:
+    - meta_scope: string.quoted.double.abcode
+    - match: '\\.'
+      scope: constant.character.escape.abcode
+    - match: '\{[^}]*\}'
+      scope: variable.other.interpolation.abcode
+    - match: '"'
+      scope: punctuation.definition.string.end.abcode
+      pop: true
+
+  single_quoted_string:
+    - meta_scope: string.quoted.single.abcode
+    - match: '\\.'
+      scope: constant.character.escape.abcode
+    - match: "'"
+      scope: punctuation.definition.string.end.abcode
+      pop: true
+
+  numbers:
+    - match: '\b\d+(?:\.\d+)?\b'
+      scope: constant.numeric.abcode
+
+  functions:
+    - match: '\b(System\.out\.print|System\.out\.println|console\.log|print|println|puts|fmt\.Println)\b'
+      scope: support.function.builtin.abcode

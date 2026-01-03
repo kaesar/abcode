@@ -33,17 +33,19 @@ Just download and uncompress according to your system and run something like...
 | 9      | C#          | .cs       |
 | 0      | Rust        | .rs       |
 
-<!--
 ## Project Structure
 
 ```
 abcode/
-├── src/main.rs         # CLI Compiler (abcodec)
+├── abcodec/            # CLI Compiler (abcodec)
+│   ├── src/main.rs     # Main compiler source
+│   ├── Cargo.toml      # Compiler dependencies
+│   └── build.sh        # Cross-compilation script
 ├── abc/                # ABCode examples
 ├── abcodejs/           # JavaScript transpilers
 ├── abcodelib/          # ABCode as library
 ├── abcodeweb/          # Web interface (like playground)
-├── abcoderun/          # ABCode script runtime (under CLI)
+├── abcoderun/          # ABCode Runtime Environment for Scripts
 ├── abcodefun/          # ABCode Web Runtime for Functions
 └── abcodeext/          # ABCode extensions for Editors
 ```
@@ -54,16 +56,16 @@ abcode/
 - **`abcodejs`**: JavaScript transpilers (used by all components via BoaJS)
 - **`abcodelib`**: ABCode compilation as Rust library
 - **`abcodeweb`**: Web UI for online compilation and preview (like playground)
-- **`abcoderun`**: Direct ABCode script execution runtime (under CLI)
+- **`abcoderun`**: ABCode Runtime Environment for Scripts
 - **`abcodefun`**: ABCode Web Runtime for Functions execution platform (AWS Lambda-style)
 - **`abcodeext`**: ABCode extensions for Editors (VSCode, Intellij, Vim, Zed, Lapce, Sublime, ACE.js)
--->
+
 ### Usage
 
 ```bash
 # CLI Compiler
-cargo build --release
-./target/release/abcodec -s abc/hello.abc -t 1
+cd abcodec && cargo build --release
+./target/release/abcodec -s ../abc/hello.abc -t 1
 
 # Web Interface
 cd abcodeweb && cargo run
@@ -85,8 +87,9 @@ cd abcodelib && cargo build
 Compiling with `cargo` and running...
 
 ```bash
-cargo run -- -s abc/hello.abc -t 6
-cargo build --release && ./target/release/abcodec -s abc/hello.abc -t 6
+cd abcodec
+cargo run -- -s ../abc/hello.abc -t 6
+cargo build --release && ./target/release/abcodec -s ../abc/hello.abc -t 6
 ```
 
 Prepare for building...
@@ -98,7 +101,7 @@ rustup target add x86_64-unknown-linux-gnu
 rustup target add aarch64-unknown-linux-gnu
 ```
 
-Building script with: `build.sh`
+Building script with: `abcodec/build.sh`
 -->
 
 > © 2021-2026 by César Andres Arcila Buitrago

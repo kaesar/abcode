@@ -1,0 +1,13 @@
+{
+  "id": "abcode",
+  "name": "ABCode Language Support",
+  "description": "Syntax highlighting for ABCode programming language",
+  "version": "1.0.0",
+  "schema_version": 1,
+  "authors": ["ABCode Team"],
+  "repository": "https://github.com/kaesar/abcode",
+  "languages": ["languages/abcode.json"],
+  "grammars": {
+    "abcode": "grammars/abcode.json"
+  }
+}

@@ -1,0 +1,20 @@
+goal: any
+#type: Example
+
+fun: welcome()
+  echo: "🚀 Welcome to ABCodeRun!"
+  like: console.log("🚀 Welcome to ABCodeRun!") #in: javascript
+
+fun: fibonacci(n)
+  echo: "Calculating fibonacci(" + n + ")"
+  like: console.log(`Calculating fibonacci(${n})`) #in: javascript
+
+fun: demo()
+  echo: "This is ABCode running directly!"
+  echo: "No intermediate files needed."
+  like: console.log("This is ABCode running directly!") #in: javascript
+  like: console.log("No intermediate files needed.") #in: javascript
+
+run: welcome()
+run: fibonacci(10)
+run: demo()

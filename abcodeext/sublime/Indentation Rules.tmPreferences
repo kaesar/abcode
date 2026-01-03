@@ -1,0 +1,9 @@
+{
+    "scope": "source.abcode",
+    "settings": {
+        "increaseIndentPattern": "^\\s*(goal|type|fun|if|when|else|for|do|try|fail|use):",
+        "decreaseIndentPattern": "^\\s*$",
+        "bracketIndentNextLinePattern": "",
+        "disableIndentNextLinePattern": ""
+    }
+}

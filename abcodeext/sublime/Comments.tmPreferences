@@ -1,0 +1,11 @@
+{
+    "scope": "source.abcode",
+    "settings": {
+        "shellVariables": [
+            {
+                "name": "TM_COMMENT_START",
+                "value": "# "
+            }
+        ]
+    }
+}

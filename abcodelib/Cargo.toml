@@ -1,0 +1,11 @@
+[package]
+name = "abcodelib"
+version = "0.6.0"
+edition = "2024"
+description = "ABCode Library - Core compilation logic for ABCode language"
+
+[dependencies]
+rust-embed = "8.9"
+boa_engine = "0.21"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

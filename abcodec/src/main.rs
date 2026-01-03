@@ -5,14 +5,14 @@ use rust_embed::RustEmbed;
 use boa_engine::{Context, Source, JsValue, JsString};
 
 #[derive(RustEmbed)]
-#[folder = "abcodejs/"]
+#[folder = "../abcodejs/"]
 struct Asset;
 
 fn main() {
     // Setting Clap for command line arguments
     let targets = "Target language or runtime:\n0. Rust (binary), 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, 5. Java (JBang), 6. Python, 7. Go, 8. PHP, 9. C# (.NET)";
     let matches = Command::new("abcodec")
-        .version("0.5.0")
+        .version("0.6.0")
         .about("ABCode Compiler (Transpiler)")
         .arg(
             Arg::new("target")

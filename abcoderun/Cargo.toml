@@ -1,0 +1,15 @@
+[package]
+name = "abcoderun"
+version = "0.6.0"
+edition = "2024"
+description = "ABCode Runtime - Execute ABCode scripts directly using BoaJS"
+
+[[bin]]
+name = "abcoderun"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+boa_engine = "0.21"
+abcodelib = { path = "../abcodelib" }
+anyhow = "1.0"

@@ -1,0 +1,8 @@
+goal: any
+#type: ServerlessFunction
+
+fun: handler()
+  echo: "Processing event..."
+  pass: {"result": "Hello " + event.name, "message": event.message, "status": "success"}
+
+run: handler()

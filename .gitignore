@@ -1,8 +1,7 @@
 /run
-/abcodec
-/abcodec-mac
-/abcodec.exe
-/abcodec*.zip
+abcodec-mac
+abcodec.exe
+abcodec*.zip
 /abcodejs/dart.js
 /abcodejs/elixir.js
 /abcodejs/ruby.js

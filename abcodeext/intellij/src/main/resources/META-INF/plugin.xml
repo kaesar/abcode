@@ -1,0 +1,29 @@
+<idea-plugin>
+  <id>com.abcode.language</id>
+  <name>ABCode Language Support</name>
+  <version>1.0.0</version>
+  <vendor>ABCode</vendor>
+  
+  <description><![CDATA[
+    Syntax highlighting and language support for ABCode programming language (.abc files)
+  ]]></description>
+  
+  <idea-version since-build="221"/>
+  
+  <extensions defaultExtensionNs="com.intellij">
+    <fileType 
+      name="ABCode" 
+      implementationClass="com.abcode.ABCodeFileType" 
+      fieldName="INSTANCE" 
+      language="ABCode" 
+      extensions="abc"/>
+    
+    <lang.parserDefinition 
+      language="ABCode" 
+      implementationClass="com.abcode.ABCodeParserDefinition"/>
+    
+    <lang.syntaxHighlighterFactory 
+      language="ABCode" 
+      implementationClass="com.abcode.ABCodeSyntaxHighlighterFactory"/>
+  </extensions>
+</idea-plugin>
