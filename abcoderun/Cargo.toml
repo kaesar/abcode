@@ -10,6 +10,5 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-boa_engine = "0.21"
 abcodelib = { path = "../abcodelib" }
 anyhow = "1.0"

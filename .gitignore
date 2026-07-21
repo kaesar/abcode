@@ -1,7 +1,25 @@
+# Build output (workspace root and legacy per-crate targets)
+/target
+**/target
+
+# Generated / local run artifacts
 /run
+/run/*
+!run/hello.js
+/abcodec/run
+/abcodec/run/*
+!abcodec/run/hello.js
+/web
+dist
+
+# Release artifacts
 abcodec-mac
 abcodec.exe
 abcodec*.zip
+*.zip
+*.pdf
+
+# WIP / experimental transpilers
 /abcodejs/dart.js
 /abcodejs/elixir.js
 /abcodejs/ruby.js
@@ -9,13 +27,7 @@ abcodec*.zip
 /abcodejs/tstl.js
 /abcodejs/gleam.js
 /abcodejs/*.md
-/run/*
-!run/hello.js
-target
-dist
-/web
-Cargo.lock
-*.pdf
-*.zip
+
+# Local scratch
 test_*
 temp_*

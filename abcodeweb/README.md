@@ -2,6 +2,8 @@
 
 Web interface (like playground) for compiling and previewing ABCode online using Rust and Feather.
 
+Part of the **ABCode Cargo workspace**. Compilation goes through [`abcodelib`](../abcodelib).
+
 ## Features
 
 - **Real-time compilation** - Compile ABCode to 10 target languages
@@ -27,10 +29,17 @@ Web interface (like playground) for compiling and previewing ABCode online using
 ## Usage
 
 ### Start Server
+
+From the **repository root**:
+
 ```bash
-cd abcodeweb
-cargo run
+cargo run -p abcodeweb
+# or
+cargo build -p abcodeweb --release
+./target/release/abcodeweb
 ```
+
+This works from anywhere inside the workspace; Cargo always places the binary in the shared `target/release/`.
 
 ### Access Interface
 Open http://localhost:3000 in your browser
@@ -44,9 +53,11 @@ curl -X POST http://localhost:3000/compile \
 
 ## Dependencies
 
-- **feather** - Lightweight web framework
-- **serde** - JSON serialization
-- **abcodelib** - ABCode compilation library
+- **feather** — Lightweight web framework
+- **serde** — JSON serialization
+- **abcodelib** — ABCode compilation library (workspace member)
+
+Because of the Cargo workspace, you only pay the cost of compiling BoaJS and heavy crates once across `abcodeweb`, `abcodec`, `abcoderun` and `abcodefun`.
 
 ## Architecture
 

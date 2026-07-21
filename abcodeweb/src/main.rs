@@ -1,7 +1,7 @@
 use feather::*;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use abcodelib::compile;
+use abcodelib::{compile, target_name};
 use std::thread;
 use std::sync::mpsc;
 
@@ -274,14 +274,14 @@ fn handle_preview(req: &mut Request) -> PreviewResponse {
         }
     };
     
-    let target_name = get_target_name(compile_req.target);
-    
+    let name = target_name(compile_req.target).to_string();
+
     // Use thread with larger stack to avoid overflow
     let (tx, rx) = mpsc::channel();
     let target = compile_req.target;
     let code = compile_req.code.clone();
     let plan = compile_req.plan.unwrap_or_else(|| "*".to_string());
-    
+
     thread::Builder::new()
         .stack_size(8 * 1024 * 1024) // 8MB stack
         .spawn(move || {
@@ -289,31 +289,15 @@ fn handle_preview(req: &mut Request) -> PreviewResponse {
             tx.send(result).unwrap();
         })
         .unwrap();
-    
+
     match rx.recv().unwrap() {
         Ok(result) => PreviewResponse {
-            target: target_name,
+            target: name,
             preview: result.code,
         },
         Err(error) => PreviewResponse {
-            target: target_name,
+            target: name,
             preview: format!("Compilation error: {}", error),
         },
     }
-}
-
-fn get_target_name(target: i32) -> String {
-    match target {
-        0 => "Rust",
-        1 => "NodeJS",
-        2 => "Deno",
-        3 => "WebAssembly",
-        4 => "Kotlin",
-        5 => "Java",
-        6 => "Python",
-        7 => "Go",
-        8 => "PHP",
-        9 => "C#",
-        _ => "NodeJS",
-    }.to_string()
 }

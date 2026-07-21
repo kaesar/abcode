@@ -1,14 +1,22 @@
 #!/bin/bash
+# Cross-compile abcodec for release artifacts.
+# Run from anywhere; builds from the workspace root.
 
-# Cross-compilation setup for Rust project
-cargo build --release --target=aarch64-apple-darwin
-cargo build --release --target=x86_64-pc-windows-msvc
-cargo build --release --target=x86_64-unknown-linux-gnu
-#cargo build --release --target=aarch64-unknown-linux-gnu
+set -euo pipefail
 
-# Copying the built binaries to the dist directory
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
 mkdir -p dist
+
+cargo build --release -p abcodec --target=aarch64-apple-darwin
+cargo build --release -p abcodec --target=x86_64-pc-windows-msvc
+cargo build --release -p abcodec --target=x86_64-unknown-linux-gnu
+# cargo build --release -p abcodec --target=aarch64-unknown-linux-gnu
+
 cp target/aarch64-apple-darwin/release/abcodec dist/abcodec-mac
 cp target/x86_64-pc-windows-msvc/release/abcodec.exe dist/abcodec.exe
 cp target/x86_64-unknown-linux-gnu/release/abcodec dist/abcodec
-#cp target/aarch64-unknown-linux-gnu/release/abcodec dist/abcodec-arm
+# cp target/aarch64-unknown-linux-gnu/release/abcodec dist/abcodec-arm
+
+echo "Binaries written to dist/"

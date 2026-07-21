@@ -1,6 +1,8 @@
 # ABCodeLib - ABCode Compilation Library
 
-Rust library for compiling ABCode to multiple target languages.
+Rust library for compiling ABCode to multiple target languages and executing generated JavaScript (BoaJS).
+
+This crate is a **member of the ABCode Cargo workspace** (see the [root README](../README.md)). All binaries (`abcodec`, `abcoderun`, `abcodefun`, `abcodeweb`) depend on it so BoaJS and `abcodejs/` are linked from a single place.
 
 ## Usage
 
@@ -11,25 +13,45 @@ let result = compile(1, "print 'Hello World'", "*")?;
 println!("Generated code: {}", result.code);
 ```
 
+Build from the repository root:
+
+```bash
+cargo build -p abcodelib
+cargo build -p abcodelib --release
+```
+
 ## API
 
-### `compile(target: i32, script_code: &str, plan: &str) -> Result<CompileResult, String>`
+### Compilation
 
-**Parameters:**
+- `compile(target, script_code, plan) -> Result<CompileResult, String>`
+- `compiler_source(target) -> Result<String, String>` — concatenated JS transpiler bundle
+- `output_path(script_file, target) -> String` — map `abc/…` paths to `run/…`
+- `file_extension(target)`, `target_name(target)`, `target_info(target)`, `TARGETS_HELP`
+
+### Execution (BoaJS)
+
+- `execute_js(js_code) -> Result<ExecuteResult, String>` — runs JS with `abchelper.js`, returns `logs` and optional `value_json`
+
+**Parameters for `compile`:**
 - `target`: Target language (0=Rust, 1=NodeJS, 2=Deno, 3=Wasm, 4=Kotlin, 5=Java, 6=Python, 7=Go, 8=PHP, 9=C#)
 - `script_code`: ABCode source code
-- `plan`: Compilation plan (use "*" for default)
+- `plan`: Compilation plan (use `"*"` for default)
 
-**Returns:**
-- `CompileResult` with generated code, console messages, and file extension
+All BoaJS usage lives in this crate so binaries (`abcodec`, `abcoderun`, `abcodefun`, `abcodeweb`) do not depend on `boa_engine` directly.
 
 ## Integration
 
-### Rust Projects
+### Rust projects (workspace member)
+
+Inside this monorepo:
+
 ```toml
 [dependencies]
 abcodelib = { path = "../abcodelib" }
 ```
+
+External projects can use the same path dependency (or a git dependency) against this crate; the workspace itself is only required for developing ABCode.
 
 ### Java/JNI Example
 ```java

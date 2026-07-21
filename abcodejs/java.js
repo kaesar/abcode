@@ -1,15 +1,36 @@
 // © 2021-2025 by César Andres Arcila Buitrago
 
-// Variable to store current script for Spring Boot detection
+// Variable to store current script for framework detection (@spring, @webflux, @vertx, ...)
 let currentScript = '';
+
+// Track whether the AB source defined its own logic entry called "main"
+let hasUserMain = false;
+
+// Track whether we already saw an explicit invocation of main from user code (run: main())
+let sawUserMainInvocation = false;
+
+// javaVertxDepth > 0 means we are emitting statements that live inside a handler
+// body for Vert.x (ctx = RoutingContext).
+// Used ONLY to scope a safe alias rewrite of the common ABCode web variables
+// ("r.xxx", "req.xxx" → "ctx.xxx") so that it never leaks into pure/non-web Java code.
+// When == 0 the rewrite is disabled.
+let javaVertxDepth = 0;
+
+// The name the user gave to the server (from `web: @server = NAME`).
+// Falls back to "server".
+let currentJavaServerVar = 'server';
 
 function start(script, plan) {
     console.log('~~~~~~~~~~~~~~~');
     console.log('ABCode for Java');
     console.log(`~~~~~~~~~~~~~~~\n\n${script}`);
     
-    // Store script for Spring Boot detection
+    // Reset state
     currentScript = script;
+    javaVertxDepth = 0;
+    pendingSetBlocks = 0;
+    hasUserMain = false;
+    sawUserMainInvocation = false;
 
     // Determine target language based on plan or goal directive
     let targetLang = 'java';
@@ -101,54 +122,149 @@ const extractClassName = (script) => {
     return className;
 }
 
-// Process transpiled code into separate sections
+// Separate the raw transpilation result into:
+// - importLines
+// - functionLines : normal user-defined fun: (hoisted as class-level static helpers)
+// - codeLines     : everything that must go inside the generated main(String[] args)
+//
+// IMPORTANT: if the source contained a "fun: main(...)", we treat its body as
+// the *main program logic* and inline the statements into codeLines (so variables
+// declared at top level of script, like "app", "port", "todos" are visible).
+// We also suppress any "abMain();" or "main();" call that was injected as a
+// result of `run: main()`.
 const processTranspiledCode = (transpiled) => {
+    const lines = transpiled.split('\n');
+
     const importLines = [];
     const functionLines = [];
     const codeLines = [];
-    
-    let inFunctionDefinition = false;
-    let functionIndent = "    "; // 4 spaces for class-level indentation
-    let currentFunction = [];
-    
-    transpiled.split('\n').forEach(line => {
-        if (line.trim().startsWith("import ")) {
-            importLines.push(line);
-        } 
-        // Check for function definition start
-        else if (line.match(/^\s*public\s+\w+\s+\w+\s*\([^)]*\)\s*\{/)) {
-            inFunctionDefinition = true;
-            // Make all methods static
-            let staticLine = line.replace(/public\s+(\w+)\s+(\w+)/, "public static $1 $2");
-            currentFunction = [functionIndent + staticLine]; // Start collecting the function
+
+    let i = 0;
+    while (i < lines.length) {
+        const raw = lines[i];
+        const trimmed = raw.trim();
+
+        if (trimmed.startsWith('import ')) {
+            importLines.push(trimmed);
+            i++;
+            continue;
         }
-        // If we're inside a function definition
-        else if (inFunctionDefinition) {
-            // Check if this line ends the function
-            if (line.trim() === "}") {
-                currentFunction.push(functionIndent + line);
-                functionLines.push(...currentFunction);
-                currentFunction = [];
-                inFunctionDefinition = false;
+
+        // Detect method emitted by checkFun:
+        //   public [static] Type name(
+        const funHead = /^public\s+(static\s+)?(\w+)\s+(\w+)\s*\(/.exec(trimmed);
+        if (funHead) {
+            const retTok = funHead[2];   // e.g. void, Integer, ...
+            const mname  = funHead[3];   // method name
+
+            const isProgramMain = (mname === 'main' || mname === 'abMain' || retTok === 'main');
+
+            // Collect the body statements contained in this fun
+            const bodyStmts = [];
+
+            let decl = trimmed;
+            if (!isProgramMain && !/\bstatic\b/.test(decl)) {
+                decl = decl.replace(/^public\s+/, 'public static ');
+            }
+
+            let opens = (decl.match(/\{/g) || []).length;
+            let closes = (decl.match(/\}/g) || []).length;
+            let depth = opens - closes;
+            i++;
+
+            while (i < lines.length && depth > 0) {
+                const t = lines[i].trim();
+
+                if (t === '}' && depth === 1) {
+                    depth = 0;
+                    i++;
+                    break;
+                }
+
+                if (t) bodyStmts.push(t);
+                else bodyStmts.push('');
+
+                opens = (t.match(/\{/g) || []).length;
+                closes = (t.match(/\}/g) || []).length;
+                depth += opens - closes;
+                i++;
+            }
+
+            if (isProgramMain) {
+                // Inline the body of what the user wrote as "fun: main" or "fun: main()"
+                // directly into the scope of the generated main(String[] args).
+                for (const stmt of bodyStmts) {
+                    codeLines.push(stmt ? ('        ' + stmt) : '');
+                }
             } else {
-                // Add line to current function with proper indentation
-                currentFunction.push(functionIndent + "    " + line.trim());
+                // Regular helper -> emit a real public static method at class level
+                functionLines.push('    ' + decl);
+                for (const stmt of bodyStmts) {
+                    functionLines.push(stmt ? ('        ' + stmt) : '');
+                }
+                functionLines.push('    }');
+            }
+            continue;
+        }
+
+        // Top-level statements (outside any fun)
+        if (trimmed) {
+            // Suppress any residual calls to the inlined main body
+            if (/^\s*(abMain\s*\(\s*\)|main\s*\(\s*\))\s*;?\s*$/.test(trimmed)) {
+                // do nothing — body was inlined
+            } else {
+                codeLines.push('        ' + trimmed);
             }
         }
-        // Regular code (not function definition or import)
-        else if (line.trim() !== '') {
-            codeLines.push("        " + line.trim()); // 8 spaces for main method
-        }
-    });
-    
+        i++;
+    }
+
     return { importLines, functionLines, codeLines };
 }
 
+/**
+ * Convert ABCode/JS-ish literals into valid Java expressions:
+ * - {"hello":"there!"}  → "{\"hello\":\"there!}\"
+ * - [1, 2, 3] remains usable (we usually translate to Arrays.asList via checkLet)
+ * - bare numbers / identifiers / calls stay as-is
+ * Used primarily for web: @handle = ...
+ */
+const toJavaValueExpr = (expr) => {
+    if (expr == null) return 'null';
+    const s = String(expr).trim();
+
+    // Already looks like a valid-ish expr (quoted string, number, ident, call starting with ident or this.)
+    if (/^".*"$/.test(s) ||
+        /^-?\d+(\.\d+)?$/.test(s) ||
+        /^[a-zA-Z_$][\w$]*(\.[a-zA-Z_$][\w$]*|\(\))*$/.test(s.replace(/\s+/g, ''))) {
+        // further heuristic: if a naked object/array literal leaks through, fall to escape below
+        if (!/^\s*[\{\[]/.test(s)) {
+            return s;
+        }
+    }
+
+    // Object literal → escape to JSON string (good enough for ctx.json("...") or simple cases)
+    if (s.startsWith('{') && s.endsWith('}')) {
+        // Escape inner double quotes minimally
+        const escaped = s.replace(/"/g, '\\"');
+        return `"${escaped}"`;
+    }
+
+    // Array literal (rare at top-level handle) - leave but caller should have wrapped as list earlier
+    if (s.startsWith('[') && s.endsWith(']')) {
+        return s;
+    }
+
+    return s;
+};
+
 // Assemble the final Java code
 const assembleJavaCode = (className, { importLines, functionLines, codeLines }) => {
+
     const isSpring = currentScript && currentScript.includes('@spring');
     const isWebFlux = currentScript && currentScript.includes('@webflux');
     const isMicronaut = currentScript && currentScript.includes('@micronaut');
+    const isVertx = currentScript && currentScript.includes('@vertx');
     
     // Imports section
     const imports = importLines.join('\n') + (importLines.length > 0 ? '\n\n' : '');
@@ -161,20 +277,37 @@ const assembleJavaCode = (className, { importLines, functionLines, codeLines }) 
         classWrapper = `@SpringBootApplication\n@RestController\npublic class ${className} {\n\n`;
     } else if (isMicronaut) {
         classWrapper = `@Controller\npublic class ${className} {\n\n`;
-    } else {
+    } else if (isVertx) {
         classWrapper = `public class ${className} {\n\n`;
+    } else {  // Default: Micronaut
+        classWrapper = `@Controller\npublic class ${className} {\n\n`;
     }
     
-    // Functions section
+    // Functions section (all fun: become static methods)
     const functions = functionLines.length > 0 ? functionLines.join('\n') + '\n\n' : '';
     
-    // Main method
+    // Build main body.
+    // We may need to add an explicit invocation to the user's "main" logic (abMain) if:
+    //   - the source contained a fun: main that we renamed
+    //   - AND the user never wrote `run: main()` that now became `abMain()`
+    let injectedCall = '';
+    if (hasUserMain && !sawUserMainInvocation) {
+        injectedCall = '        abMain();\n';
+    }
+
+    const mainBody = codeLines.join('\n') + (injectedCall ? '\n' + injectedCall : '');
+    
     const mainMethod = "    public static void main(String[] args) {\n" + 
-                       codeLines.join('\n') + 
+                       mainBody + 
                        "\n    }\n";
     
     // Class closing
     const closing = "}";
+    
+    // Post reset bookkeeping (safety)
+    javaVertxDepth = 0;
+    hasUserMain = false;
+    sawUserMainInvocation = false;
     
     return imports + classWrapper + functions + mainMethod + closing;
 }
@@ -183,7 +316,6 @@ const checkLet = (indent, key, code) => {
     let sentence = '';
     let variable = '';
     let value = '';
-    //let typify = 'any';
     let typing = [];
     let parcial = code.split('=');
     if (parcial.length > 1) {
@@ -194,7 +326,6 @@ const checkLet = (indent, key, code) => {
             variable = parcial[0].trim()
         value = parcial[1].trim();
         
-        // Apply routines to the value
         if (value && value !== 'null') {
             value = applyRoutines(value, 'java');
         }
@@ -204,7 +335,16 @@ const checkLet = (indent, key, code) => {
         value = 'null';
     }
 
-    // Determine variable type
+    // Special case: empty list literal intending mutation later
+    if (/^\[\s*\]$/.test(value.trim())) {
+        value = 'new java.util.ArrayList<>()';
+    } else if (sentence.indexOf('= [') > 0 || value.indexOf('= [') > 0 || value.trim().startsWith('[')) {
+        // General: try to convert array literal to mutable list when not already converted
+        if (value.indexOf('[') === 0) {
+            value = value.replace('[', 'java.util.Arrays.asList(').replace(']', ')');
+        }
+    }
+
     let type = 'Object';
     if (typing.length > 1) {
         let declaredType = typing[1].trim();
@@ -219,9 +359,9 @@ const checkLet = (indent, key, code) => {
         sentence = `var ${variable} = ${value}`;
     }
 
-    if (sentence.indexOf('= [') > 0) {
-        sentence = sentence.replace('= [', '= Arrays.asList(');
-        sentence = sentence.replace(']', ')');
+    if (sentence.indexOf('= [') > 0 && !sentence.includes('asList')) {
+        sentence = sentence.replace('= [', '= java.util.Arrays.asList(');
+        sentence = sentence.replace(/]$/, ')');
     }
 
     return `${indent}${sentence};\n`;
@@ -229,6 +369,17 @@ const checkLet = (indent, key, code) => {
 
 const checkFun = (indent, code) => {
     const [name, kind, params, spec, simple] = parseFun(code);
+
+    const originalName = name;
+    let methodName = name;
+
+    // collision handling: reserve real Java "main" signature for entrypoint. Redirect user's main.
+    if (originalName === 'main') {
+        hasUserMain = true;
+        methodName = 'abMain';   // renamed to avoid duplicate public static void main
+        sawUserMainInvocation = false; // will be turned on later if user does explicit run: main()
+    }
+
     let returnType = kind && kind !== 'void' ? kind : 'void';
     
     // Convert types to Java types
@@ -237,7 +388,7 @@ const checkFun = (indent, code) => {
     else if (returnType === 'any') returnType = 'Object';
     else if (returnType === 'float') returnType = 'Double';
     
-    let sentence = `public ${returnType} ${name}(`;
+    let sentence = `public static ${returnType} ${methodName}(`;
     
     // Check for WebFlux reactive types
     const isWebFlux = currentScript && currentScript.includes('@webflux');
@@ -250,7 +401,7 @@ const checkFun = (indent, code) => {
             // Traditional CompletableFuture
             returnType = `CompletableFuture<${returnType}>`;
         }
-        sentence = `public ${returnType} ${name}(`;
+        sentence = `public static ${returnType} ${methodName}(`;
     }
 
     for (let i = 0; i < params.length; i++) {
@@ -271,7 +422,7 @@ const checkFun = (indent, code) => {
     sentence += ') {';
     
     if (code === 'new')
-        sentence = sentence.replace(/public \w+ new/, 'public');
+        sentence = sentence.replace(/public static \w+ new/, 'public static');
 
     return `${indent}${sentence}\n`;
 }
@@ -307,21 +458,35 @@ const checkIf = (indent, key, code) => {
 
 const checkFor = (indent, code) => {
     const [ start, stop, step, varstep, varsize, incode ] = parseFor(code);
+
+    // Normalize sizing for Java lists / collections
+    const sizeExpr = (v) => `${v}.size()`;
+
     if (incode && varstep) {
-        if (stop.indexOf('len(') === 0 && varsize) {
-            if (step && step !== "1")
-                return `${indent}var ${varstep} = 0\n${indent}for (${varstep} = ${start}; ${varstep} < ${varsize}.size; ${varstep} += ${step}) {\n`;
-            return `${indent}var ${varstep} = 0\n${indent}for (${varstep} = ${start}; ${varstep} < ${varsize}.size; ${varstep}++) {\n`;
-        }
-        else
-            return `${indent}var ${varstep} = 0\n${indent}for (${varstep} = ${start}; ${varstep} < ${stop}; ${varstep}++) {\n`;
+        // "for: i in range(...)"
+        const useSize = (stop && stop.indexOf('len(') === 0 && varsize);
+        const upper = useSize ? sizeExpr(varsize) : stop;
+
+        const init = `${varstep} = ${start}`;
+        const cond = `${varstep} < ${upper}`;
+        const inc  = (step && step !== "1") ? `${varstep} += ${step}` : `${varstep}++`;
+
+        // Use a clean for-loop with a proper local declaration in the header
+        return `${indent}for (int ${varstep} = ${start}; ${cond}; ${inc}) {\n`;
     }
-    else if (incode)
+    else if (incode) {
+        // raw style not very common in ABCode Java path, still emit a guard
         return `${indent}for (${code}) {\n`;
-    else if (varsize)
-        return `${indent}while (${code.replace('len(' + varsize + ')', varsize + '.size')}) {\n`;
-    else
+    }
+    else if (varsize) {
+        // while (len(xs)) style → translate to while (xs.size() > 0) or similar
+        // keep behavior similar to existing but correct .size -> .size()
+        const replaced = code.replace('len(' + varsize + ')', sizeExpr(varsize));
+        return `${indent}while (${replaced}) {\n`;
+    }
+    else {
         return `${indent}while (${code}) {\n`;
+    }
 }
 
 const checkDoc = (indent, code) => {
@@ -336,62 +501,132 @@ const checkDoc = (indent, code) => {
     }
     
     let sentence = `${indent}# ${code}\n`;
-    if (code === 'end')
-        sentence = `${indent}}\n`;
+    if (code === 'end') {
+        sentence = `${indent}${closeOneBlock()}\n`;
+    }
     sentence = sentence.replace('# ', '//');
     return sentence;
 }
 
-const checkRead = (indent, code) => {
-    return `${indent}import ${code}\n`;
+// Close handler / block.
+// For @vertx (explicit) on Java we declare an explicit
+// `public void handlerXXX(RoutingContext ctx) { ... }` and close it with normal `}`.
+// We use javaVertxDepth to know when to also deactivate the alias rewrite scope.
+function closeOneBlock() {
+    if (pendingSetBlocks > 0) {
+        pendingSetBlocks--;
+        return ''; // set: blocks emit no real '}'
+    }
+    if (javaVertxDepth > 0) {
+        javaVertxDepth--;
+    }
+    return '}';
 }
 
+const checkRead = (indent, code) => {
+    return `${indent}import ${code};\n`;
+}
+
+// Count of synthetic set: blocks we have opened that don't correspond to a real Java { block.
+// When checkDoc sees an 'end' and this is >0, we just decrement without emitting a Java '}'.
+let pendingSetBlocks = 0;
+
 const checkSet = (indent, code) => {
-    return `${indent}var ${code}\n`;
+    // set: starts a block of field declarations. In Java we emit a marker comment
+    // and then ignore the corresponding 'end' block (we pretend the block closed without writing '}' ).
+    pendingSetBlocks++;
+    return `${indent}// ABCode set: ${code}  (consider a static class or record for strong typing)\n`;
 }
 
 const checkUse = (indent, code) => {
-    let lib = parseUse(code)
+    let lib = parseUse(code);
+    const emitSingle = (l) => `${indent}import ${l};\n`;
+
     if (lib === '@abc')
-        lib = 'abc';
-    else if (lib === '@api')
-        lib = 'io.javalin.Javalin';  // Default: Javalin
-    else if (lib === '@spring')
-        lib = 'org.springframework.boot.SpringApplication\n${indent}import org.springframework.web.bind.annotation.*\n${indent}import org.springframework.boot.autoconfigure.SpringBootApplication';
-    else if (lib === '@webflux')
-        lib = 'org.springframework.boot.SpringApplication\n${indent}import org.springframework.web.bind.annotation.*\n${indent}import org.springframework.boot.autoconfigure.SpringBootApplication\n${indent}import reactor.core.publisher.Mono\n${indent}import reactor.core.publisher.Flux\n${indent}import org.springframework.web.reactive.function.server.*';
-    else if (lib === '@micronaut')
-        lib = 'io.micronaut.runtime.Micronaut\n${indent}import io.micronaut.http.annotation.*\n${indent}import io.micronaut.http.HttpResponse';
-    else if (lib === '@vertx')
-        lib = 'io.vertx.core.Vertx\n${indent}import io.vertx.ext.web.Router\n${indent}import io.vertx.core.http.HttpServer\n${indent}import io.vertx.ext.web.RoutingContext';
-    else if (lib === '@mongodb')
-        lib = `com.mongodb.MongoClient\n${indent}import com.mongodb.MongoException`;
-    return `${indent}import ${lib}\n`;
+        return emitSingle('abc');
+
+    if (lib === '@api') {
+        // Java default web framework is Micronaut
+        return `${indent}import io.micronaut.runtime.Micronaut;\n` +
+               `${indent}import io.micronaut.http.annotation.*;\n` +
+               `${indent}import io.micronaut.http.HttpResponse;\n`;
+    }
+
+    if (lib === '@spring') {
+        // Note: SpringBoot cases usually rely on the generated main to bootstrap via SpringApplication.run
+        // Emit the needed annotations + SpringApplication
+        return `${indent}import org.springframework.boot.SpringApplication;\n` +
+               `${indent}import org.springframework.web.bind.annotation.*;\n` +
+               `${indent}import org.springframework.boot.autoconfigure.SpringBootApplication;\n`;
+    }
+
+    if (lib === '@webflux') {
+        return `${indent}import org.springframework.boot.SpringApplication;\n` +
+               `${indent}import org.springframework.web.bind.annotation.*;\n` +
+               `${indent}import org.springframework.boot.autoconfigure.SpringBootApplication;\n` +
+               `${indent}import reactor.core.publisher.Mono;\n` +
+               `${indent}import reactor.core.publisher.Flux;\n` +
+               `${indent}import org.springframework.web.reactive.function.server.*;\n`;
+    }
+
+    if (lib === '@micronaut') {
+        return `${indent}import io.micronaut.runtime.Micronaut;\n` +
+               `${indent}import io.micronaut.http.annotation.*;\n` +
+               `${indent}import io.micronaut.http.HttpResponse;\n`;
+    }
+
+    if (lib === '@vertx') {
+        return `${indent}import io.vertx.core.Vertx;\n` +
+               `${indent}import io.vertx.ext.web.Router;\n` +
+               `${indent}import io.vertx.core.http.HttpServer;\n` +
+               `${indent}import io.vertx.ext.web.RoutingContext;\n`;
+    }
+
+    if (lib === '@mongodb') {
+        return `${indent}import com.mongodb.MongoClient;\n` +
+               `${indent}import com.mongodb.MongoException;\n`;
+    }
+
+    // Generic single import, force semicolon
+    if (lib && !lib.includes('\n')) {
+        return emitSingle(lib);
+    }
+
+    // Fallback: split possible multi-line and clean
+    return lib.split('\n').map(l => {
+        const trimmed = l.trim();
+        if (!trimmed) return '';
+        if (trimmed.startsWith('import ')) {
+            return trimmed.endsWith(';') ? `${indent}${trimmed}\n` : `${indent}${trimmed};\n`;
+        }
+        return `${indent}import ${trimmed};\n`;
+    }).join('');
 }
 
 const checkSub = (indent, code) => {
     const [method, route, name, simple] = parseSub(code);
     if (['get','post','put','delete','head','patch','options'].includes(method)) {
-        // Check framework type
         const isSpring = currentScript && currentScript.includes('@spring');
         const isWebFlux = currentScript && currentScript.includes('@webflux');
         const isMicronaut = currentScript && currentScript.includes('@micronaut');
         const isVertx = currentScript && currentScript.includes('@vertx');
-        
+
+        const handlerName = name || ('handler_' + Math.random().toString(36).slice(2, 8));
+
         if (isWebFlux) {
             const methodAnnotation = `@${method.charAt(0).toUpperCase() + method.slice(1)}Mapping`;
-            return `${indent}${methodAnnotation}(${route})\n${indent}public Mono<String> ${name}() {\n`;
+            return `${indent}${methodAnnotation}(${route})\n${indent}public Mono<String> ${handlerName}() {\n`;
         } else if (isSpring) {
             const methodAnnotation = `@${method.charAt(0).toUpperCase() + method.slice(1)}Mapping`;
-            return `${indent}${methodAnnotation}(${route})\n${indent}public String ${name}() {\n`;
-        } else if (isMicronaut) {
-            const methodAnnotation = `@${method.charAt(0).toUpperCase() + method.slice(1)}`;
-            return `${indent}${methodAnnotation}(${route})\n${indent}public HttpResponse<String> ${name}() {\n`;
+            return `${indent}${methodAnnotation}(${route})\n${indent}public String ${handlerName}() {\n`;
         } else if (isVertx) {
-            return `${indent}router.${method}(${route}).handler(ctx -> {\n${indent}    ${name}(ctx);\n${indent}});\n${indent}public void ${name}(RoutingContext ctx) {\n`;
-        } else {
-            // Default: Javalin
-            return `${indent}app.${method}(${route}, (ctx) -> {\n`;
+            // explicit @vertx — use Vert.x handler with router
+            const stmt = `${indent}router.${method}(${route}).handler(ctx -> {\n${indent}    ${handlerName}(ctx);\n${indent}});\n${indent}public void ${handlerName}(RoutingContext ctx) {\n`;
+            javaVertxDepth++;
+            return stmt;
+        } else {  // Default for Java: Micronaut
+            const methodAnnotation = `@${method.charAt(0).toUpperCase() + method.slice(1)}`;
+            return `${indent}${methodAnnotation}(${route})\n${indent}public HttpResponse<String> ${handlerName}() {\n`;
         }
     }
     return `${indent}for (Object item : ${code}) {\n`;
@@ -414,7 +649,12 @@ const checkWeb = (indent, code) => {
         } else if (isVertx) {
             return `${indent}Vertx vertx = Vertx.vertx();\n${indent}HttpServer ${handle} = vertx.createHttpServer();\n${indent}Router router = Router.router(vertx);\n`;
         } else {
-            return `${indent}Javalin ${handle} = Javalin.create();\n`;
+            // Default for Java: Micronaut
+            // Use the exact variable name the user wrote (e.g. "app").
+            // If they wrote `web: @server = app`, we must use "app", not hard-coded "server".
+            const sv = (handle && handle.trim()) ? handle.trim() : 'server';
+            currentJavaServerVar = sv;
+            return `${indent}// Micronaut app configured via @Controller\n`;
         }
     } else if (method === '@listen' || method === 'listen') {
         if (isWebFlux || isSpring) {
@@ -422,21 +662,26 @@ const checkWeb = (indent, code) => {
         } else if (isMicronaut) {
             return `${indent}Micronaut.run(${extractClassName(currentScript || '')}.class, args);\n`;
         } else if (isVertx) {
-            return `${indent}server.requestHandler(router).listen(${handle});\n`;
-        } else {
-            return `${indent}app.start(${handle});\n`;
+            // explicit @vertx — respect @server name if given, otherwise conventional "server"
+            const sv = (currentJavaServerVar && currentJavaServerVar.trim()) ? currentJavaServerVar.trim() : 'server';
+            return `${indent}${sv}.requestHandler(router).listen(${handle});\n`;
+        } else {  // Default (plain @api or unmarked web on Java): Micronaut
+            const sv = (currentJavaServerVar && currentJavaServerVar.trim()) ? currentJavaServerVar.trim() : 'server';
+            return `${indent}Micronaut.run(${extractClassName(currentScript || '')}.class, args);\n`;
         }
     } else if (method === '@handle' || method === '@handler' || method === 'handle') {
+        const safeHandle = toJavaValueExpr(handle);
+
         if (isWebFlux) {
-            return `${indent}return Mono.just(${handle});\n`;
+            return `${indent}return Mono.just(${safeHandle});\n`;
         } else if (isSpring) {
-            return `${indent}return ${handle};\n`;
+            return `${indent}return ${safeHandle};\n`;
         } else if (isMicronaut) {
-            return `${indent}return HttpResponse.ok(${handle});\n`;
+            return `${indent}return HttpResponse.ok(${safeHandle});\n`;
         } else if (isVertx) {
-            return `${indent}ctx.response().end(${handle});\n`;
-        } else {
-            return `${indent}ctx.result(${handle});\n`;
+            return `${indent}ctx.response().end(${safeHandle});\n`;
+        } else {  // Default: Micronaut style response
+            return `${indent}return HttpResponse.ok(${safeHandle});\n`;
         }
     }
     
@@ -505,6 +750,20 @@ const transpileLine = (item) => {
         for (let j = 0; j < item.indent; j++)
             indent += ' ';
 
+    // ------------------------------------------------------------------
+    // Scoped alias rewrite for Vert.x web handlers (@vertx explicit only)
+    // ------------------------------------------------------------------
+    // We rewrite common ABCode variables "r.xxx" / "req.xxx" → "ctx.xxx"
+    // **only** when javaVertxDepth > 0 (inside the body of a Vert.x handler).
+    //
+    // When javaVertxDepth == 0 (pure Java code or non-handler statements)
+    // no rewrite ever occurs. This guarantees that generic Java is untouched.
+    // Micronaut is the default web framework (no special handler wrapper).
+    if (item.code && typeof item.code === 'string' && javaVertxDepth > 0) {
+        item.code = item.code.replace(/\br\./g, 'ctx.');
+        item.code = item.code.replace(/\breq\./g, 'ctx.');
+    }
+
     // Check if this is an echo statement and we have replacements
     if (item.key === 'echo' && Object.keys(currentReplacements).length > 0) {
         // Look for a replacement for this echo statement
@@ -521,7 +780,7 @@ const transpileLine = (item) => {
         return `\n`;
 
     if (item.key === 'end')  // ##
-        return `${indent}}\n`;
+        return `${indent}${closeOneBlock()}\n`;
 
     if (item.key === 'doc') {  // #
         // Verificar si es una anotación estilo Rust (#[annotation])
@@ -559,8 +818,16 @@ const transpileLine = (item) => {
         return checkFor(indent, item.code);
 
     if (item.key === 'run') {  // run:
-        if (item.code.indexOf('main(') > -1)
-            return '';
+        // Handle user explicitly calling main — we redirect to our safe name.
+        // User source may do:  run: main()   or  run: main(x, y)
+        const mainCallMatch = item.code.match(/^\s*main\s*\((.*)\)\s*$/);
+        if (mainCallMatch) {
+            sawUserMainInvocation = true;
+            const args = mainCallMatch[1].trim();
+            const call = args ? `abMain(${args})` : `abMain()`;
+            return `${indent}${call};\n`;
+        }
+
         // Reemplazar @ con this. para acceder a propiedades de clase
         let code = item.code.replace(/@([a-zA-Z0-9_]+)/g, 'this.$1');
         // Apply routines to the code

@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+    "abcodelib",
+    "abcodec",
+    "abcoderun",
+    "abcodefun",
+    "abcodeweb",
+]
+
+# Shared package metadata defaults (optional; each crate can override)
+[workspace.package]
+version = "0.7.0"
+edition = "2024"
+license = "MIT"
