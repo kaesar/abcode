@@ -1,4 +1,8 @@
-use boa_engine::{Context, JsString, JsValue, Source};
+use boa_engine::{
+    Context, JsString, JsValue, Source,
+    object::{builtins::JsArray, ObjectInitializer},
+    property::Attribute,
+};
 use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
@@ -22,13 +26,14 @@ pub struct ExecuteResult {
 
 /// Human-readable list of supported targets (CLI help text).
 pub const TARGETS_HELP: &str = "Target language or runtime:\n\
-0. Rust (binary), 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, \
+0. Binary (native via scriptc/perry), 1. NodeJS/Bun, 2. Deno, 3. Wasm, 4. Kotlin, \
 5. Java (JBang), 6. Python, 7. Go, 8. PHP, 9. C# (.NET)";
 
 /// File extension for a target language (including the leading dot).
+/// Target 0 emits Node-compatible JS intermediate for AOT binary tools.
 pub fn file_extension(target: i32) -> &'static str {
     match target {
-        0 => ".rs",
+        0 => ".js",
         1 => ".js",
         2 => ".ts",
         3 => ".ts",
@@ -45,7 +50,7 @@ pub fn file_extension(target: i32) -> &'static str {
 /// Short display name for a target.
 pub fn target_name(target: i32) -> &'static str {
     match target {
-        0 => "Rust",
+        0 => "Binary",
         1 => "NodeJS",
         2 => "Deno",
         3 => "WebAssembly",
@@ -62,7 +67,12 @@ pub fn target_name(target: i32) -> &'static str {
 /// Static post-compile info message for a target, if any.
 pub fn target_info(target: i32) -> Option<&'static str> {
     match target {
-        0 => Some("INFO => try \"cd run & cargo run\" with your environment"),
+        0 => Some(
+            "INFO => Same JS intermediate as target 1 (uses node.js transpiler).\n\
+             Build native binary with (npm i -g either):\n\
+               PerryTS (recommended): perry compile <file>.js -o <name>\n\
+               scriptc (smaller binaries): scriptc build <file>.js -o <name>",
+        ),
         1 => Some(
             "INFO => You must include first a \"package.json\" file with \"restana\" module if it is a WebServer",
         ),
@@ -84,7 +94,7 @@ pub fn target_info(target: i32) -> Option<&'static str> {
 
 fn transpiler_file(target: i32) -> Option<&'static str> {
     match target {
-        0 => Some("rust.js"),
+        0 => Some("node.js"),
         1 => Some("node.js"),
         2 => Some("deno.js"),
         3 => Some("wasm.js"),
@@ -175,12 +185,44 @@ pub fn compile(target: i32, script_code: &str, plan: &str) -> Result<CompileResu
 
 /// Execute JavaScript with `abchelper.js` (console capture) loaded first.
 pub fn execute_js(js_code: &str) -> Result<ExecuteResult, String> {
+    execute_js_with_argv(js_code, &[])
+}
+
+/// Execute JavaScript with `abchelper.js` and a `process.argv` array.
+///
+/// The first element of `argv` is the script name (convention: `process.argv[0]`).
+/// The rest are the user-provided arguments. When `argv` is empty, no `process`
+/// global is injected (backwards-compatible with plain `execute_js`).
+pub fn execute_js_with_argv(js_code: &str, argv: &[String]) -> Result<ExecuteResult, String> {
     let mut context = Context::default();
 
     let helper = load_asset("abchelper.js")?;
     context
         .eval(Source::from_bytes(helper.as_bytes()))
         .map_err(|e| format!("Helper setup error: {e}"))?;
+
+    // Inject process.argv if arguments were provided
+    if !argv.is_empty() {
+        let js_argv: Vec<JsValue> = argv
+            .iter()
+            .map(|s| JsValue::new(JsString::from(s.as_str())))
+            .collect();
+        let js_argv_array = JsArray::from_iter(js_argv, &mut context);
+
+        let process_obj = ObjectInitializer::new(&mut context)
+            .property(
+                JsString::from("argv"),
+                JsValue::from(js_argv_array),
+                Attribute::empty(),
+            )
+            .build();
+
+        let process_val = JsValue::new(process_obj);
+        context
+            .global_object()
+            .set(JsString::from("process"), process_val, false, &mut context)
+            .map_err(|e| format!("Failed to set process global: {e}"))?;
+    }
 
     let result = context
         .eval(Source::from_bytes(js_code.as_bytes()))

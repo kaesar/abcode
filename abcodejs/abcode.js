@@ -5,7 +5,7 @@ const words = ['fun:','if:','when:','else:','for:','do:','try:','fail:','use:','
 //const breaks = ['fun:','if:','when:','else:','for:','do:','try:','fail:','case:','each:'];
 let isMainModule = false;
 
-const targetMap = { 0: 'rust', 1: 'node', 2: 'deno', 3: 'wasm', 4: 'kotlin', 5: 'java', 6: 'python', 7: 'go', 8: 'php', 9: 'csharp' };
+const targetMap = { 0: 'node', 1: 'node', 2: 'deno', 3: 'wasm', 4: 'kotlin', 5: 'java', 6: 'python', 7: 'go', 8: 'php', 9: 'csharp' };
 
 // Built-in matches (routines) - Organized by categories: native, same, abc
 const routines = [

@@ -1,6 +1,7 @@
 # Build output (workspace root and legacy per-crate targets)
 /target
 **/target
+/node_modules
 
 # Generated / local run artifacts
 /run

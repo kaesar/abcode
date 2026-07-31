@@ -1,4 +1,5 @@
 use feather::*;
+use feather::jwt::{JwtManager, SimpleClaims};
 use serde::Serialize;
 use std::error::Error;
 use std::fs;
@@ -7,7 +8,7 @@ use std::sync::mpsc;
 use std::thread;
 use abcodelib::{compile, execute_js};
 
-const PORT: u16 = 3001;
+const DEFAULT_PORT: u16 = 3001;
 
 #[derive(Serialize)]
 struct InvokeResponse {
@@ -20,6 +21,13 @@ struct InvokeResponse {
 
 fn main() {
     let mut app = App::new();
+
+    // Initialize auth config from environment
+    let auth_config = AuthConfig::from_env();
+    let auth_mode = if auth_config.jwt_manager.is_some() { "JWT" } else { "NoAuth" };
+
+    // Add auth middleware (NoAuth if JWT_SECRET not set)
+    app.use_middleware(auth_middleware(auth_config));
 
     app.post(
         "/invoke/:function_name",
@@ -35,11 +43,12 @@ fn main() {
 
     app.get(
         "/health",
-        |_req: &mut Request, res: &mut Response, _ctx: &AppContext| -> Result<MiddlewareResult, Box<dyn Error>> {
+        move |_req: &mut Request, res: &mut Response, _ctx: &AppContext| -> Result<MiddlewareResult, Box<dyn Error>> {
             let health = serde_json::json!({
                 "status": "healthy",
                 "service": "abcodefun",
-                "version": "0.6.0"
+                "version": "0.7.0",
+                "auth_mode": auth_mode
             });
             res.body = Some(health.to_string().into_bytes().into());
             let _ = res.add_header("Content-Type", "application/json");
@@ -47,14 +56,79 @@ fn main() {
         },
     );
 
+    // Support PORT environment variable
+    let port = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+
     println!("- ABCodeFun - Serverless ABCode Runtime");
     println!("- Functions directory: ./functions/");
-    println!("- Server running on http://localhost:{}", PORT);
+    println!("- Server running on http://localhost:{}", port);
     println!("- Endpoints:");
     println!("   POST /invoke/:function_name - Execute ABCode function");
     println!("   GET  /health - Health check");
 
-    app.listen(&format!("127.0.0.1:{}", PORT));
+    app.listen(&format!("127.0.0.1:{}", port));
+}
+
+/// Authentication configuration - supports NoAuth mode (default) or JWT mode
+struct AuthConfig {
+    jwt_manager: Option<JwtManager>,
+}
+
+impl AuthConfig {
+    fn from_env() -> Self {
+        // Check for JWT_SECRET environment variable
+        if let Ok(secret) = std::env::var("JWT_SECRET") {
+            let manager = JwtManager::new(secret);
+            println!("- JWT Authentication: ENABLED (HS256)");
+            AuthConfig { jwt_manager: Some(manager) }
+        } else {
+            println!("- JWT Authentication: DISABLED (NoAuth mode)");
+            AuthConfig { jwt_manager: None }
+        }
+    }
+}
+
+/// Middleware to extract and validate JWT token
+/// If no JWT manager configured, acts as pass-through (NoAuth mode)
+fn auth_middleware(auth_config: AuthConfig) -> impl Fn(&mut Request, &mut Response, &AppContext) -> Result<MiddlewareResult, Box<dyn Error>> + 'static {
+    move |req: &mut Request, res: &mut Response, _ctx: &AppContext| -> Result<MiddlewareResult, Box<dyn Error>> {
+        // If no JWT manager configured, skip auth (NoAuth mode)
+        let Some(manager) = &auth_config.jwt_manager else {
+            return Ok(MiddlewareResult::Next);
+        };
+
+        // Extract token from Authorization header
+        let auth_header = req.headers.get("authorization")
+            .and_then(|h| h.to_str().ok());
+
+        let token = match auth_header {
+            Some(header) if header.starts_with("Bearer ") => &header[7..],
+            _ => {
+                res.set_status(401);
+                res.send_json(&serde_json::json!({
+                    "error": "Missing or invalid Authorization header. Expected: Bearer <token>"
+                }));
+                return Ok(MiddlewareResult::End);
+            }
+        };
+
+        // Validate token
+        match manager.decode::<SimpleClaims>(token) {
+            Ok(claims) => {
+                // Store claims in request extensions for downstream use
+                // Arc implements Clone so it works with Extensions::insert
+                req.extensions.insert(std::sync::Arc::new(claims));
+                Ok(MiddlewareResult::Next)
+            }
+            Err(e) => {
+                res.set_status(401);
+                res.send_json(&serde_json::json!({
+                    "error": format!("Invalid token: {}", e)
+                }));
+                Ok(MiddlewareResult::End)
+            }
+        }
+    }
 }
 
 fn handle_invoke(req: &mut Request, function_name: &str) -> InvokeResponse {

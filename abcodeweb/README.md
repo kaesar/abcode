@@ -15,7 +15,8 @@ Part of the **ABCode Cargo workspace**. Compilation goes through [`abcodelib`](.
 
 | Target | Language    | Extension |
 |--------|-------------|-----------|
-| 1      | NodeJS      | .js       |
+| 0      | Binary      | (exe)     |
+| 1      | NodeJS/Bun  | .js       |
 | 2      | Deno        | .ts       |
 | 3      | WebAssembly | .ts       |
 | 4      | Kotlin      | .kt       |
@@ -24,7 +25,6 @@ Part of the **ABCode Cargo workspace**. Compilation goes through [`abcodelib`](.
 | 7      | Go          | .go       |
 | 8      | PHP         | .php      |
 | 9      | C#          | .cs       |
-| 0      | Rust        | .rs       |
 
 ## Usage
 

@@ -19,7 +19,86 @@ function start(script, plan) {
     }
     
     const processedScript = checkLike(script, targetLang);
-    return transpileLines('Go', processedScript, transpileLine) || '';
+    return buildGoOutput(processedScript, script);
+}
+
+// Build the complete Go file output with boilerplate, imports, and main()
+function buildGoOutput(processedScript, originalScript) {
+    // Build Go file with proper boilerplate
+    let output = 'package main\n\n';
+    
+    // Split processedScript into lines, separate run: statements
+    const lines = processedScript.split('\n');
+    const runStatements = [];
+    const linesToTranspile = [];
+    
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('run:')) {
+            // Extract the code after "run:" and add to runStatements
+            const code = trimmed.substring(4).trim();
+            if (code) runStatements.push(code);
+        } else {
+            linesToTranspile.push(line);
+        }
+    }
+    
+    // Transpile the non-run lines using the imported function
+    const transpiled = transpileLines('Go', linesToTranspile.join('\n'), transpileLine) || '';
+    
+    // Track imports needed - check both processed and transpiled
+    let needsFmt = transpiled.includes('fmt.Println') || transpiled.includes('fmt.Print');
+    let needsStrings = transpiled.includes('strings.');
+    let needsHttp = transpiled.includes('http.') || processedScript.includes('http.Listen') || processedScript.includes('http.Handle');
+    let needsOs = transpiled.includes('os.') || processedScript.includes('os.Open');
+    let needsIoutil = transpiled.includes('ioutil.') || processedScript.includes('ioutil.Write') || processedScript.includes('ioutil.Read');
+    let needsTime = transpiled.includes('time.');
+    let needsJson = transpiled.includes('json.');
+    let needsSort = transpiled.includes('sort.');
+    let needsContext = transpiled.includes('context.');
+    let needsMongo = transpiled.includes('mongo.');
+    
+    // Build imports
+    let imports = [];
+    if (needsFmt) imports.push('\t"fmt"');
+    if (needsStrings) imports.push('\t"strings"');
+    if (needsHttp) imports.push('\t"net/http"');
+    if (needsOs) imports.push('\t"os"');
+    if (needsIoutil) imports.push('\t"io/ioutil"');
+    if (needsTime) imports.push('\t"time"');
+    if (needsJson) imports.push('\t"encoding/json"');
+    if (needsSort) imports.push('\t"sort"');
+    if (needsContext) imports.push('\t"context"');
+    if (needsMongo) imports.push('\t"go.mongodb.org/mongo-driver/bson"');
+    if (needsMongo) imports.push('\t"go.mongodb.org/mongo-driver/mongo"');
+    if (needsMongo) imports.push('\t"go.mongodb.org/mongo-driver/mongo/options"');
+    
+    // Build Go file with proper boilerplate
+    let output = 'package main\n\n';
+    if (imports.length > 0) {
+        output += 'import (\n' + imports.join('\n') + '\n)\n\n';
+    }
+    
+    // Output: imports + transpiled code + main() with run statements
+    output += transpiled;
+    
+    // Close any remaining open blocks before main()
+    for (let i = 0; i < openBlocks; i++) {
+        output += '\t}\n';
+    }
+    openBlocks = 0;
+    
+    if (runStatements.length > 0) {
+        output += '\nfunc main() {\n';
+        for (const stmt of runStatements) {
+            // Apply routines to the run statement
+            const processed = applyRoutines(stmt, 'go');
+            output += '\t' + processed + '\n';
+        }
+        output += '}';
+    }
+    
+    return output;
 }
 
 const isObjectType = (kind) => {

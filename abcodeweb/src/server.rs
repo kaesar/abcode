@@ -94,7 +94,7 @@ fn render_interface() -> String {
             <div class="mb-4 flex items-center space-x-4">
                 <label class="text-sm">Target:</label>
                 <select id="target" class="bg-gray-800 text-white px-3 py-1 rounded">
-                    <option value="0">Rust</option>
+                    <option value="0">Binary</option>
                     <option value="1" selected>NodeJS</option>
                     <option value="2">Deno</option>
                     <option value="3">WebAssembly</option>
@@ -303,7 +303,7 @@ fn compile_with_external(code: &str, target: i32) -> Result<(String, String), St
 
 fn get_target_name(target: i32) -> String {
     match target {
-        0 => "Rust",
+        0 => "Binary",
         1 => "NodeJS",
         2 => "Deno",
         3 => "WebAssembly",
@@ -319,7 +319,7 @@ fn get_target_name(target: i32) -> String {
 
 fn get_extension(target: i32) -> String {
     match target {
-        0 => ".rs",
+        0 => ".js",
         1 => ".js",
         2 => ".ts",
         3 => ".ts",

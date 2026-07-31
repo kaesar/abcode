@@ -1,6 +1,6 @@
 // © 2021-2025 by César Andres Arcila Buitrago
 
-// Variable to store current script for framework detection (@spring, @webflux, @vertx, ...)
+// Variable to store current script for framework detection (@spring, @webflux, @micronaut)
 let currentScript = '';
 
 // Track whether the AB source defined its own logic entry called "main"
@@ -8,13 +8,6 @@ let hasUserMain = false;
 
 // Track whether we already saw an explicit invocation of main from user code (run: main())
 let sawUserMainInvocation = false;
-
-// javaVertxDepth > 0 means we are emitting statements that live inside a handler
-// body for Vert.x (ctx = RoutingContext).
-// Used ONLY to scope a safe alias rewrite of the common ABCode web variables
-// ("r.xxx", "req.xxx" → "ctx.xxx") so that it never leaks into pure/non-web Java code.
-// When == 0 the rewrite is disabled.
-let javaVertxDepth = 0;
 
 // The name the user gave to the server (from `web: @server = NAME`).
 // Falls back to "server".
@@ -27,7 +20,6 @@ function start(script, plan) {
     
     // Reset state
     currentScript = script;
-    javaVertxDepth = 0;
     pendingSetBlocks = 0;
     hasUserMain = false;
     sawUserMainInvocation = false;
@@ -264,7 +256,6 @@ const assembleJavaCode = (className, { importLines, functionLines, codeLines }) 
     const isSpring = currentScript && currentScript.includes('@spring');
     const isWebFlux = currentScript && currentScript.includes('@webflux');
     const isMicronaut = currentScript && currentScript.includes('@micronaut');
-    const isVertx = currentScript && currentScript.includes('@vertx');
     
     // Imports section
     const imports = importLines.join('\n') + (importLines.length > 0 ? '\n\n' : '');
@@ -275,10 +266,7 @@ const assembleJavaCode = (className, { importLines, functionLines, codeLines }) 
         classWrapper = `@SpringBootApplication\n@RestController\npublic class ${className} {\n\n`;
     } else if (isSpring) {
         classWrapper = `@SpringBootApplication\n@RestController\npublic class ${className} {\n\n`;
-    } else if (isMicronaut) {
-        classWrapper = `@Controller\npublic class ${className} {\n\n`;
-    } else if (isVertx) {
-        classWrapper = `public class ${className} {\n\n`;
+
     } else {  // Default: Micronaut
         classWrapper = `@Controller\npublic class ${className} {\n\n`;
     }
@@ -305,7 +293,6 @@ const assembleJavaCode = (className, { importLines, functionLines, codeLines }) 
     const closing = "}";
     
     // Post reset bookkeeping (safety)
-    javaVertxDepth = 0;
     hasUserMain = false;
     sawUserMainInvocation = false;
     
@@ -509,16 +496,10 @@ const checkDoc = (indent, code) => {
 }
 
 // Close handler / block.
-// For @vertx (explicit) on Java we declare an explicit
-// `public void handlerXXX(RoutingContext ctx) { ... }` and close it with normal `}`.
-// We use javaVertxDepth to know when to also deactivate the alias rewrite scope.
 function closeOneBlock() {
     if (pendingSetBlocks > 0) {
         pendingSetBlocks--;
         return ''; // set: blocks emit no real '}'
-    }
-    if (javaVertxDepth > 0) {
-        javaVertxDepth--;
     }
     return '}';
 }
@@ -526,9 +507,6 @@ function closeOneBlock() {
 const checkRead = (indent, code) => {
     return `${indent}import ${code};\n`;
 }
-
-// Count of synthetic set: blocks we have opened that don't correspond to a real Java { block.
-// When checkDoc sees an 'end' and this is >0, we just decrement without emitting a Java '}'.
 let pendingSetBlocks = 0;
 
 const checkSet = (indent, code) => {
@@ -575,13 +553,6 @@ const checkUse = (indent, code) => {
                `${indent}import io.micronaut.http.HttpResponse;\n`;
     }
 
-    if (lib === '@vertx') {
-        return `${indent}import io.vertx.core.Vertx;\n` +
-               `${indent}import io.vertx.ext.web.Router;\n` +
-               `${indent}import io.vertx.core.http.HttpServer;\n` +
-               `${indent}import io.vertx.ext.web.RoutingContext;\n`;
-    }
-
     if (lib === '@mongodb') {
         return `${indent}import com.mongodb.MongoClient;\n` +
                `${indent}import com.mongodb.MongoException;\n`;
@@ -609,7 +580,6 @@ const checkSub = (indent, code) => {
         const isSpring = currentScript && currentScript.includes('@spring');
         const isWebFlux = currentScript && currentScript.includes('@webflux');
         const isMicronaut = currentScript && currentScript.includes('@micronaut');
-        const isVertx = currentScript && currentScript.includes('@vertx');
 
         const handlerName = name || ('handler_' + Math.random().toString(36).slice(2, 8));
 
@@ -619,11 +589,6 @@ const checkSub = (indent, code) => {
         } else if (isSpring) {
             const methodAnnotation = `@${method.charAt(0).toUpperCase() + method.slice(1)}Mapping`;
             return `${indent}${methodAnnotation}(${route})\n${indent}public String ${handlerName}() {\n`;
-        } else if (isVertx) {
-            // explicit @vertx — use Vert.x handler with router
-            const stmt = `${indent}router.${method}(${route}).handler(ctx -> {\n${indent}    ${handlerName}(ctx);\n${indent}});\n${indent}public void ${handlerName}(RoutingContext ctx) {\n`;
-            javaVertxDepth++;
-            return stmt;
         } else {  // Default for Java: Micronaut
             const methodAnnotation = `@${method.charAt(0).toUpperCase() + method.slice(1)}`;
             return `${indent}${methodAnnotation}(${route})\n${indent}public HttpResponse<String> ${handlerName}() {\n`;
@@ -637,19 +602,13 @@ const checkWeb = (indent, code) => {
     const isSpring = currentScript && currentScript.includes('@spring');
     const isWebFlux = currentScript && currentScript.includes('@webflux');
     const isMicronaut = currentScript && currentScript.includes('@micronaut');
-    const isVertx = currentScript && currentScript.includes('@vertx');
     
     if (method === '@server' || method === 'server') {
         if (isWebFlux) {
             return `${indent}// Spring WebFlux app configured via @SpringBootApplication\n`;
         } else if (isSpring) {
             return `${indent}// Spring Boot app configured via @SpringBootApplication\n`;
-        } else if (isMicronaut) {
-            return `${indent}// Micronaut app configured via @Controller\n`;
-        } else if (isVertx) {
-            return `${indent}Vertx vertx = Vertx.vertx();\n${indent}HttpServer ${handle} = vertx.createHttpServer();\n${indent}Router router = Router.router(vertx);\n`;
-        } else {
-            // Default for Java: Micronaut
+        } else {  // Default for Java: Micronaut
             // Use the exact variable name the user wrote (e.g. "app").
             // If they wrote `web: @server = app`, we must use "app", not hard-coded "server".
             const sv = (handle && handle.trim()) ? handle.trim() : 'server';
@@ -659,14 +618,7 @@ const checkWeb = (indent, code) => {
     } else if (method === '@listen' || method === 'listen') {
         if (isWebFlux || isSpring) {
             return `${indent}SpringApplication.run(${extractClassName(currentScript || '')}.class, args);\n`;
-        } else if (isMicronaut) {
-            return `${indent}Micronaut.run(${extractClassName(currentScript || '')}.class, args);\n`;
-        } else if (isVertx) {
-            // explicit @vertx — respect @server name if given, otherwise conventional "server"
-            const sv = (currentJavaServerVar && currentJavaServerVar.trim()) ? currentJavaServerVar.trim() : 'server';
-            return `${indent}${sv}.requestHandler(router).listen(${handle});\n`;
-        } else {  // Default (plain @api or unmarked web on Java): Micronaut
-            const sv = (currentJavaServerVar && currentJavaServerVar.trim()) ? currentJavaServerVar.trim() : 'server';
+        } else {  // Default: Micronaut (including @micronaut explicit or plain @api)
             return `${indent}Micronaut.run(${extractClassName(currentScript || '')}.class, args);\n`;
         }
     } else if (method === '@handle' || method === '@handler' || method === 'handle') {
@@ -676,10 +628,6 @@ const checkWeb = (indent, code) => {
             return `${indent}return Mono.just(${safeHandle});\n`;
         } else if (isSpring) {
             return `${indent}return ${safeHandle};\n`;
-        } else if (isMicronaut) {
-            return `${indent}return HttpResponse.ok(${safeHandle});\n`;
-        } else if (isVertx) {
-            return `${indent}ctx.response().end(${safeHandle});\n`;
         } else {  // Default: Micronaut style response
             return `${indent}return HttpResponse.ok(${safeHandle});\n`;
         }
@@ -750,32 +698,7 @@ const transpileLine = (item) => {
         for (let j = 0; j < item.indent; j++)
             indent += ' ';
 
-    // ------------------------------------------------------------------
-    // Scoped alias rewrite for Vert.x web handlers (@vertx explicit only)
-    // ------------------------------------------------------------------
-    // We rewrite common ABCode variables "r.xxx" / "req.xxx" → "ctx.xxx"
-    // **only** when javaVertxDepth > 0 (inside the body of a Vert.x handler).
-    //
-    // When javaVertxDepth == 0 (pure Java code or non-handler statements)
-    // no rewrite ever occurs. This guarantees that generic Java is untouched.
-    // Micronaut is the default web framework (no special handler wrapper).
-    if (item.code && typeof item.code === 'string' && javaVertxDepth > 0) {
-        item.code = item.code.replace(/\br\./g, 'ctx.');
-        item.code = item.code.replace(/\breq\./g, 'ctx.');
-    }
-
-    // Check if this is an echo statement and we have replacements
-    if (item.key === 'echo' && Object.keys(currentReplacements).length > 0) {
-        // Look for a replacement for this echo statement
-        for (const lineIndex in currentReplacements) {
-            // Simple string match to identify the line
-            if (item.code && currentReplacements[lineIndex]) {
-                return `${indent}${currentReplacements[lineIndex]};\n`;
-            }
-        }
-    }
-
-//console.log(item)
+    //console.log(item)
     if (item.key === 'line')  // enter
         return `\n`;
 

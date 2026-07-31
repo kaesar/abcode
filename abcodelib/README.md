@@ -34,7 +34,7 @@ cargo build -p abcodelib --release
 - `execute_js(js_code) -> Result<ExecuteResult, String>` — runs JS with `abchelper.js`, returns `logs` and optional `value_json`
 
 **Parameters for `compile`:**
-- `target`: Target language (0=Rust, 1=NodeJS, 2=Deno, 3=Wasm, 4=Kotlin, 5=Java, 6=Python, 7=Go, 8=PHP, 9=C#)
+- `target`: Target language (0=Binary via scriptc/perry, 1=NodeJS, 2=Deno, 3=Wasm, 4=Kotlin, 5=Java, 6=Python, 7=Go, 8=PHP, 9=C#)
 - `script_code`: ABCode source code
 - `plan`: Compilation plan (use `"*"` for default)
 

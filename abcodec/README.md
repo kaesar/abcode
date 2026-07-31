@@ -27,8 +27,8 @@ From this directory (`abcodec/`), the same commands work; Cargo still uses the w
 
 | Target | Language    | Extension |
 |--------|-------------|-----------|
-| 0      | Rust        | .rs       |
-| 1      | NodeJS      | .js       |
+| 0      | Binary      | (exe)     |
+| 1      | NodeJS/Bun  | .js       |
 | 2      | Deno        | .ts       |
 | 3      | WebAssembly | .ts       |
 | 4      | Kotlin      | .kt       |
@@ -37,6 +37,41 @@ From this directory (`abcodec/`), the same commands work; Cargo still uses the w
 | 7      | Go          | .go       |
 | 8      | PHP         | .php      |
 | 9      | C#          | .cs       |
+
+> Official supported target is 1. There are targets fully experimentals (> 3)
+
+### Target 0 — Binary (native executable)
+
+ABCode transpiles to the **same JS intermediate as target 1** (reuses `node.js`) and then automatically compiles it to a native binary.
+
+**Default backend:** [scriptc](https://scriptc.dev/) — small static binaries (~358 KB), ideal for ABCode scripts.
+**Fallback:** [PerryTS](https://www.perryts.com/) (~7.6 MB, broader Node API coverage).
+**Last resort:** runs via `node` as a regular script.
+
+```bash
+# Default — uses scriptc, falls back to perry, then node
+./target/release/abcodec -s abc/hello.abc -t 0
+
+# Force a specific backend
+./target/release/abcodec -s abc/hello.abc -t 0 -b perry    # force PerryTS
+./target/release/abcodec -s abc/hello.abc -t 0 -b scriptc   # force scriptc
+./target/release/abcodec -s abc/hello.abc -t 0 -b auto      # default
+
+# → run/hello.js  (JS intermediate)
+# → run/hello     (native binary, auto-generated)
+
+./run/hello    # runs the binary without Node.js
+```
+
+**Backend options (`-b` / `--backend`):**
+
+| Value | Behavior |
+|-------|----------|
+| `auto` (default) | Try scriptc, then perry, then node |
+| `scriptc` | Use only scriptc; fail if not installed |
+| `perry` | Use only PerryTS; fail if not installed |
+
+Install backends: `npm i -g scriptc` or `npm i -g @perryts/perry`.
 
 ## Cross-compilation
 

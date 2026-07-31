@@ -22,7 +22,8 @@ Just download and uncompress according to your system and run something like...
 
 | Target | Language    | Extension |
 |--------|-------------|-----------|
-| 1      | NodeJS      | .js       |
+| 0      | Binary      | (exe: scriptc/perry) |
+| 1      | NodeJS/Bun  | .js       |
 | 2      | Deno        | .ts       |
 | 3      | WebAssembly | .ts       |
 | 4      | Kotlin      | .kt       |
@@ -31,7 +32,9 @@ Just download and uncompress according to your system and run something like...
 | 7      | Go          | .go       |
 | 8      | PHP         | .php      |
 | 9      | C#          | .cs       |
-| 0      | Rust        | .rs       |
+
+> Official supported target is `1`. There are targets fully experimentals (> 3).  
+> Target `0` uses `scriptc` (on macOS/Linux) or you can use `-b perry` for cross-compilation (both experimental).
 
 ## Project Structure
 

@@ -98,7 +98,7 @@ fn render_interface() -> String {
             <div class="mb-4 flex items-center space-x-4">
                 <label class="text-sm">Target:</label>
                 <select id="target" class="bg-gray-800 text-white px-3 py-1 rounded">
-                    <option value="0">Rust</option>
+                    <option value="0">Binary</option>
                     <option value="1" selected>NodeJS</option>
                     <option value="2">Deno</option>
                     <option value="3">WebAssembly</option>
