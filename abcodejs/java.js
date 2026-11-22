@@ -449,6 +449,12 @@ const checkFor = (indent, code) => {
     // Normalize sizing for Java lists / collections
     const sizeExpr = (v) => `${v}.size()`;
 
+    if (incode && varstep && (start === null || stop === null)) {
+        // "for: x in collection" -> enhanced for
+        const collection = incode.replace(/^in\s+/, '').trim();
+        return `${indent}for (var ${varstep} : ${collection}) {\n`;
+    }
+
     if (incode && varstep) {
         // "for: i in range(...)"
         const useSize = (stop && stop.indexOf('len(') === 0 && varsize);

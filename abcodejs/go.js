@@ -175,7 +175,9 @@ const checkIf = (indent, key, code) => {
 
 const checkFor = (indent, code) => {
     const [ start, stop, step, varstep, varsize, incode ] = parseFor(code);
-    if (incode && varstep) {
+    const isRange = start !== null && stop !== null;
+
+    if (incode && varstep && isRange) {
         if (stop.indexOf('len(') == 0 && varsize) {
             if (step && step != "1")
                 return `${indent}for ${varstep} := ${start}; ${varstep} < len(${varsize}); ${varstep} += ${step} {\n`;
@@ -184,8 +186,13 @@ const checkFor = (indent, code) => {
         else
             return `${indent}for ${varstep} := ${start}; ${varstep} < ${stop}; ${varstep}++ {\n`;
     }
-    else if (incode)
-        return `${indent}for ${code} {\n`;
+    else if (incode && varstep) {
+        // for: x in collection -> range over values
+        const collection = incode.replace(/^in\s+/, '').trim();
+        return `${indent}for _, ${varstep} := range ${collection} {\n`;
+    }
+    else if (varsize)
+        return `${indent}for ${code.replace('len(' + varsize + ')', 'len(' + varsize + ')')} {\n`;
     else
         return `${indent}for ${code} {\n`;
 }

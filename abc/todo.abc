@@ -12,7 +12,7 @@ set: Todo
 web: @server = app
 
 val: todos = []
-val: nextId = 1
+var: nextId = 1
 
 # Methods...
 do: get("/todos") = listTodos
@@ -31,10 +31,10 @@ do: get("/todos/:id") = getTodo
 do: post("/todos") = createTodo
   var: title = r.body.title
   
-   if: !title
-     #web: :status = 400
-     web: @handle = {"error": "Title is required"}
-     pass: "ok"
+  if: !title
+    #web: :status = 400
+    web: @handle = {"error": "Title is required"}
+    pass: "ok"
   
   var: todo = {
     "id": nextId.toString(),
@@ -83,8 +83,8 @@ do: delete("/todos/:id") = deleteTodo
 
 # Start the web server
 fun: main()
-  echo: "TODO List API server starting on port {port:4}"
   val: port = 3000
+  echo: "TODO List API server starting on port {port:4}"
   web: @listen = port
 
 # Main function

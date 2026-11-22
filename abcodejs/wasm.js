@@ -2,6 +2,12 @@
 
 // Variable to store current script for framework detection
 let currentScript = '';
+// Stack of open blocks: fun, if, for, do, try, fail, type, set
+let blockStack = [];
+
+const normalizeBool = (code) => String(code === null || code === undefined ? '' : code)
+    .replace(/\bTrue\b/g, 'true')
+    .replace(/\bFalse\b/g, 'false');
 
 function start(script, plan) {
     console.log('~~~~~~~~~~~~~~~~~~~~~~');
@@ -34,6 +40,15 @@ function start(script, plan) {
 }
 
 const checkLet = (indent, key, code) => {
+    // Class property: var: @name (or var: @name = value)
+    const field = code.trim().match(/^@([A-Za-z_$][\w$]*)\s*(?:=\s*(.*))?$/);
+    if (field) {
+        const fieldName = field[1];
+        if (field[2] !== undefined && field[2].trim() !== '')
+            return `${indent}this.${fieldName} = ${field[2].trim()};\n`;
+        return `${indent}${fieldName};\n`;
+    }
+
     let [name, kind, value] = parseVar(code);
     if (value !== null && value.length === 0)
         value = 'null';
@@ -43,47 +58,48 @@ const checkLet = (indent, key, code) => {
         value = applyRoutines(value, 'wasm');
     }
 
-    let sentence = key === 'val' ? `const ${name} = ${value}` : `let ${name} = ${value}`;
+    // AssemblyScript: keep explicit scalar types when declared.
+    const asType = { int: 'i32', float: 'f64', boolean: 'bool', string: 'string' }[kind];
+    const typed = asType ? `${name}: ${asType}` : name;
+    let sentence = `let ${typed} = ${value}`;
 
-    if (sentence.indexOf('int') > -1)
-        sentence = sentence.replace(new RegExp('int','g'), 'i32');
-    else if (sentence.indexOf('float') > -1)
-        sentence = sentence.replace(new RegExp('float','g'), 'f64');
-    else if (sentence.indexOf('boolean') > -1)
-        sentence = sentence.replace(new RegExp('boolean','g'), 'bool');
-    
     return `${indent}${sentence}\n`;
 }
 
 const checkFun = (indent, code) => {
     const [name, kind, params, spec, simple] = parseFun(code);
-    let sentence = `function ${simple} {`;
-    
-    // Handle async functions
-    if (spec && spec.includes('async')) {
-        sentence = `async function ${name}(`;
-        for (let i = 0; i < params.length; i++) {
-            if (i > 0) sentence += ', ';
-            sentence += params[i].name + ': ' + params[i].kind;
-        }
-        sentence += ') {';
-    }
-    
-    if (name === 'new')
-        return `${indent}constructor (${simple}) {\n`;
+    const paramList = params.map(p => p.name).join(', ');
+    const inClass = blockStack.includes('type');
 
-    if (sentence.indexOf('int') > -1)
-        sentence = sentence.replace(new RegExp('int','g'), 'i32');
-    else if (sentence.indexOf('float') > -1)
-        sentence = sentence.replace(new RegExp('float','g'), 'f64');
-    else if (sentence.indexOf('boolean') > -1)
-        sentence = sentence.replace(new RegExp('boolean','g'), 'bool');
+    // Constructor: fun: new(...) -> constructor(...)
+    if (name === 'new')
+        return `${indent}constructor (${paramList}) {\n`;
+
+    // Method inside type: ... -> name(...) { ... }
+    if (inClass) {
+        const prefix = spec && spec.includes('async') ? 'async ' : '';
+        return `${indent}${prefix}${name} (${paramList}) {\n`;
+    }
+
+    // AssemblyScript: annotate parameters and return type.
+    const asType = (t) => ({ int: 'i32', float: 'f64', boolean: 'bool', string: 'string' }[t] || t || 'void');
+    let sentence = `function ${name}(${params.map(p => `${p.name}: ${asType(p.kind)}`).join(', ')})`;
+
+    if (name === 'new')
+        return `${indent}constructor (${paramList}) {\n`;
+
+    if (inClass)
+        return `${indent}${name} (${params.map(p => `${p.name}: ${asType(p.kind)}`).join(', ')})${kind && kind !== 'void' ? ': ' + asType(kind) : ''} {\n`;
+
+    sentence += kind && kind !== 'void' ? `: ${asType(kind)} {` : ' {';
+    if (spec && spec.includes('async'))
+        sentence = `async ${sentence}`;
 
     return `${indent}${sentence}\n`;
 }
 
 const checkIf = (indent, key, code) => {
-    let sentence = parseIf(key, code);
+    let sentence = normalizeBool(parseIf(key, code));
 
     if (key === 'if') {  // if:
         return `${indent}if (${sentence}) {\n`;
@@ -103,21 +119,26 @@ const checkIf = (indent, key, code) => {
 
 const checkFor = (indent, code) => {
     const [ start, stop, step, varstep, varsize, incode ] = parseFor(code);
+    const condition = normalizeBool(code);
+
     if (incode && varstep) {
-        if (stop.indexOf('len(') === 0 && varsize) {
+        // for: i in range(...) -> numeric loop
+        if (start !== null && stop !== null) {
+            const limit = stop.indexOf('len(') === 0 && varsize
+                ? `${varsize}.length`
+                : stop;
             if (step && step !== "1")
-                return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${varsize}.length; ${varstep} += ${step}) {\n`;
-            return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${varsize}.length; ${varstep}++) {\n`;
+                return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${limit}; ${varstep} += ${step}) {\n`;
+            return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${limit}; ${varstep}++) {\n`;
         }
-        else
-            return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${stop}; ${varstep}++) {\n`;
+        // for: x in collection -> iterate values, not indexes
+        const collection = incode.replace(/^in\s+/, '');
+        return `${indent}for (const ${varstep} of ${collection}) {\n`;
     }
-    else if (incode)
-        return `${indent}for (${code}) {\n`;
     else if (varsize)
-        return `${indent}while (${code.replace('len(' + varsize + ')', varsize + '.length')}) {\n`;
+        return `${indent}while (${condition.replace('len(' + varsize + ')', varsize + '.length')}) {\n`;
     else
-        return `${indent}while (${code}) {\n`;
+        return `${indent}while (${condition}) {\n`;
 }
 
 const checkDoc = (indent, code) => {
@@ -129,45 +150,103 @@ const checkDoc = (indent, code) => {
 }
 
 const checkRead = (indent, code) => {
-    return `${indent}require ${code};\n`;
+    // read: is reserved in the specification; do not emit invalid JS.
+    return `${indent}// read: ${code} (reserved)\n`;
 }
 
-const checkSet = (indent, code) => {
-    return `${indent}let ${code};\n`;
+const checkSet = (indent, code, item) => {
+    // set: Name defines a data structure. Map it to a JS class whose
+    // constructor accepts an object with the declared fields.
+    const fields = [];
+    const baseIndent = item.indent;
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        if (sentence.line <= item.line)
+            continue;
+        if (sentence.indent <= baseIndent)
+            break;
+        if (['end','line','raw','doc'].includes(sentence.key))
+            continue;
+        fields.push({ name: sentence.key, type: sentence.code || 'any' });
+    }
+
+    let out = `${indent}/** @typedef {Object} ${code}\n`;
+    for (const field of fields)
+        out += `${indent} * @property {${field.type}} ${field.name}\n`;
+    out += `${indent} */\n`;
+    out += `${indent}class ${code} {\n`;
+    out += `${indent}  constructor(fields = {}) {\n`;
+    out += `${indent}    Object.assign(this, {\n`;
+    for (const field of fields)
+        out += `${indent}      ${field.name}: undefined,\n`;
+    out += `${indent}    }, fields);\n`;
+    out += `${indent}  }\n`;
+    out += `${indent}}\n`;
+    return out;
 }
 
 const checkUse = (indent, code) => {
     let lib = parseUse(code)
     if (lib === '@abc')
-        lib = "import { abc } from 'abc.js'";
+        lib = "const abc = require('abc');";
     else if (lib === '@api')
-        lib = "// WebAssembly API framework not implemented";
+        lib = "const userver = require('low-http-server')({});\nconst restana = require('restana');";  // Default: Restana
+    else if (lib === '@hono')
+        lib = "const { Hono } = require('hono');";
     else if (lib === "@mongodb")
-        lib = "// MongoDB for WebAssembly not implemented";
+        lib = "const mongodb = require('mongodb');";
+    else if (lib === '@sys')
+        lib = "const sys = require('sys');";
+    else if (lib === '@cli')
+        lib = "const { execSync } = require('child_process');";
+    else if (lib.startsWith('@'))
+        lib = `// use: ${lib} (not implemented)`;
     else
-        lib = `import ${lib}`;
-    
+        lib = `require('${lib}');`;
+
     return `${indent}${lib}\n`;
 }
 
 const checkSub = (indent, code) => {
     const [method, route, name, simple] = parseSub(code);
     if (['get','post','put','delete','head','patch','options'].includes(method)) {
-        return `${indent}app.${method}(${route.replace(new RegExp('"','g'), `'`)}, ${name})\n${indent}function ${name} (ctx: Context) {\n`;
+        // Check if using Hono
+        const isHono = currentScript && currentScript.includes('@hono');
+        
+        if (isHono) {
+            return `${indent}app.${method}(${route.replace(new RegExp('"','g'), `'`)}, (c) => {\n`;
+        } else {
+            // Default: Restana. Alias r to req for existing ABCode examples.
+            return `${indent}app.${method}(${route.replace(new RegExp('"','g'), `'`)}, ${name})\n${indent}function ${name} (req, res) {\n${indent}  const r = req;\n`;
+        }
     }
     
-    return `${indent}${code}.forEach {\n`;
+    // Generic do: is not a web route. Avoid emitting invalid JS.
+    return `${indent}// do: ${code} (unsupported form)\n`;
 }
 
 const checkWeb = (indent, code) => {
     const [method, handle] = parseWeb(code);
+    const isHono = currentScript && currentScript.includes('@hono');
     
     if (method === '@server' || method === 'server') {
-        return `${indent}// WebAssembly server implementation\n${indent}const ${handle} = new WebAssemblyServer();\n`;
+        if (isHono) {
+            return `${indent}const ${handle} = new Hono();\n`;
+        } else {
+            return `${indent}const ${handle} = restana({ server: userver, prioRequestsProcessing: false });\n`;
+        }
     } else if (method === '@listen' || method === 'listen') {
-        return `${indent}${handle}.listen(${handle});\n`;
+        if (isHono) {
+            return `${indent}const server = require('http').createServer(app.fetch);\n${indent}server.listen(${handle});\n`;
+        } else {
+            return `${indent}userver.listen(${handle});\n`;
+        }
     } else if (method === '@handle' || method === '@handler' || method === 'handle') {
-        return `${indent}return ${handle};\n`;
+        if (isHono) {
+            return `${indent}return c.text(${handle});\n`;
+        } else {
+            return `${indent}res.send(${handle});\n`;
+        }
     }
     
     return ``;
@@ -176,11 +255,11 @@ const checkWeb = (indent, code) => {
 const checkDBC = (indent, code) => {
     const [method, handle, vary] = parseDBC(code);
     if (method === 'link')
-        return `${indent}// Database connection for WebAssembly\n${indent}const dbc = new WasmDBClient();\n${indent}dbc.connect(${handle});\n`;
+        return `${indent}const dbc = new mongodb.MongoClient(${handle});\n`;
     else if (vary)
-        return `${indent}let ${vary} = dbc.database(${handle});\n`;
+        return `${indent}const ${vary} = dbc.db(${handle});\n`;
 
-    return `${indent}${code}\n`;
+    return `${indent}// dbc: ${code}\n`;
 }
 
 // Process goal: directive to determine target language
@@ -188,7 +267,7 @@ const checkGoal = (script) => {
     const goalMatch = script.match(/goal:\s*(\w+)/i);
     if (goalMatch && goalMatch[1]) {
         const goal = goalMatch[1].toLowerCase();
-        // If goal is specified and it's not wasm, log it for potential use
+        // If goal is specified and it's not node, log it for potential use
         if (goal !== 'wasm') {
             console.log(`@GOAL:${goal}`);
         }
@@ -212,14 +291,14 @@ const checkLike = (script, currentGoal) => {
             continue;
         }
         
-        // Skip goal: and type: directives
-        if (line.trim().match(/^(goal|type):/i)) {
+        // Skip goal: directives (not statements). type: must be kept.
+        if (line.trim().match(/^goal:/i)) {
             continue;
         }
         
         // Check if this is a like: directive with inline #in: comment
         if (line.trim().match(/^like:/i)) {
-            const inMatch = line.match(/#in:\s*(\w+)/i);
+            const inMatch = line.match(/#@?in:\s*(\w+)/i);
             if (inMatch && inMatch[1]) {
                 const targetLang = inMatch[1].toLowerCase();
                 
@@ -230,7 +309,7 @@ const checkLike = (script, currentGoal) => {
                         processedLines.pop(); // Remove the previous line
                     }
                     // Add the like: content (removing the 'like:' prefix and the #in: comment)
-                    const cleanedLine = line.replace(/^like:\s*/i, '').replace(/#in:\s*\w+/i, '').trim();
+                    const cleanedLine = line.replace(/^like:\s*/i, '').replace(/#@?in:\s*\w+/i, '').trim();
                     processedLines.push(cleanedLine);
                 }
                 // Skip this line if it doesn't match the current goal
@@ -245,7 +324,7 @@ const checkLike = (script, currentGoal) => {
     return processedLines.join('\n');
 }
 
-// Función para manejar operaciones de archivo en AssemblyScript
+// Función para manejar operaciones de archivo
 const checkFile = (indent, code) => {
     // Extraer el método y el argumento
     const parts = code.split(/\s*=\s*/);
@@ -257,23 +336,20 @@ const checkFile = (indent, code) => {
     switch (method) {
         case '@open':
         case 'open':
-            return `${indent}// AssemblyScript file operations require specific imports\n${indent}import { open } from "as-wasi";\n${indent}const fileHandle = open(${args}, "r+");\n`;
+            return `${indent}const fs = require('fs');\n${indent}const fileHandle = fs.openSync(${args}, 'r+');\n`;
         case '@write':
         case 'write':
-            return `${indent}// Using WASI for file operations\n${indent}import { writeFile } from "as-wasi";\n${indent}writeFile(${args.split(',')[0]}, String.UTF8.encode(${args.split(',')[1]}));\n`;
+            return `${indent}fs.writeFileSync(${args.split(',')[0]}, ${args.split(',')[1]});\n`;
         case '@read':
         case 'read':
-            return `${indent}// Using WASI for file operations\n${indent}import { readFile } from "as-wasi";\n${indent}const fileContent = String.UTF8.decode(readFile(${args}));\n`;
+            return `${indent}const fileContent = fs.readFileSync(${args}, 'utf8');\n`;
         case '@close':
         case 'close':
-            return `${indent}${args}.close();\n`;
+            return `${indent}fs.closeSync(${args});\n`;
         default:
             return `${indent}// Unknown file operation: ${method}\n`;
     }
 };
-
-// Mantener un seguimiento de los bloques abiertos para evitar cierres duplicados
-let openBlocks = 0;
 
 const transpileLine = (item) => {
     let indent = '';
@@ -281,18 +357,22 @@ const transpileLine = (item) => {
         for (let j = 0; j < item.indent; j++)
             indent += ' ';
 
+    if (item.key === 'raw')  // verbatim continuation line
+        return `${item.code}\n`;
+
     if (item.key === 'line')  // enter
         return `\n`;
 
     if (item.key === 'end') {  // ##
-        if (openBlocks > 0) {
-            openBlocks--;
-            // Check if this closes a block that needs extra line break
-            const needsBreak = item.indent === 0 || 
-                              (item.grade && item.grade < (item.prevGrade || 0));
-            return needsBreak ? `${indent}}\n\n` : `${indent}}\n`;
-        }
-        return `\n`; // No generar cierre si no hay bloques abiertos
+        const kind = blockStack.pop();
+        if (!kind)
+            return `\n`;
+        if (kind === 'set')
+            return ``; // set: has no JS block
+        // Check if this closes a block that needs extra line break
+        const needsBreak = item.indent === 0 ||
+                          (item.grade && item.grade < (item.prevGrade || 0));
+        return needsBreak ? `${indent}}\n\n` : `${indent}}\n`;
     }
 
     if (item.key === 'doc') {  // #
@@ -310,7 +390,7 @@ const transpileLine = (item) => {
         return checkLet(indent, item.key, item.code);
     
     if (item.key === 'fun') {  // fun:
-        openBlocks++; // Incrementar contador de bloques abiertos
+        blockStack.push('fun');
         return checkFun(indent, item.code);
     }
 
@@ -321,7 +401,7 @@ const transpileLine = (item) => {
     }
 
     if (item.key === 'if') {  // if:
-        openBlocks++; // Incrementar contador de bloques abiertos
+        blockStack.push('if');
         return checkIf(indent, item.key, item.code);
     }
 
@@ -332,7 +412,7 @@ const transpileLine = (item) => {
         return checkIf(indent, item.key, item.code);
 
     if (item.key === 'for') {  // for:
-        openBlocks++; // Incrementar contador de bloques abiertos
+        blockStack.push('for');
         return checkFor(indent, item.code);
     }
 
@@ -341,48 +421,58 @@ const transpileLine = (item) => {
         let code = item.code.replace(/@([a-zA-Z0-9_]+)/g, 'this.$1');
         // Apply routines to the code
         code = applyRoutines(code, 'wasm');
+        // Handle await expressions
+        code = code.replace(/\bawait\s+/g, 'await ');
         return `${indent}${code}\n`;
     }
 
     if (item.key === 'echo') {  // echo:
         // Reemplazar @ con this. para acceder a propiedades de clase
         let code = item.code.replace(/@([a-zA-Z0-9_]+)/g, 'this.$1');
+        // Apply routines (e.g. s.find("x"), len(v)) to printed expressions.
+        code = applyRoutines(code, 'wasm');
         
         // Detectar si es una cadena con interpolación
         if (code.includes('{') && code.includes('}') && code.startsWith('"') && code.endsWith('"')) {
             // Convertir a template literal
             code = code.substring(1, code.length - 1); // Quitar comillas
-            code = code.replace(/{([^{}:]+)(?::([^{}]+))?}/g, (match, varName, format) => {
-                if (!format) return '${' + varName.trim() + '}';
-                
-                // Manejar formato
-                if (format.includes('.')) {
-                    const [width, precision] = format.split('.');
-                    return '${' + varName.trim() + '.toFixed(' + precision + ')}';
+            // Convert {var} / {var:width} / {var:.2f}, but keep an already
+            // valid JS interpolation such as ${var} untouched.
+            code = code.replace(/(^|[^$])\{([^{}:]+)(?::([^{}]+))?\}/g, (match, prefix, varName, format) => {
+                const name = varName.trim();
+                if (!format) return prefix + '${' + name + '}';
+
+                // Decimal format: {price:.2f}
+                if (format.startsWith('.')) {
+                    const precision = format.slice(1).replace(/[^0-9]/g, '') || '0';
+                    return prefix + '${Number(' + name + ').toFixed(' + precision + ')}';
                 }
-                return '${' + varName.trim() + '.padStart(' + format + ')}';
+
+                // Width format: {name:10}
+                const width = format.replace(/[^0-9]/g, '') || '0';
+                return prefix + '${String(' + name + ').padStart(' + width + ')}';
             });
-            return `${indent}console.log(\`${code}\`);\n`;
+            return `${indent}console.log(\`${code}\`)\n`;
         }
         
-        return `${indent}console.log(${code});\n`;
+        return `${indent}console.log(${code})\n`;
     }
 
     if (item.key === 'read')  // read:
         return checkRead(indent, item.code);
 
     if (item.key === 'do') {  // do:
-        openBlocks++; // Incrementar contador de bloques abiertos
+        blockStack.push('do');
         return checkSub(indent, item.code);
     }
 
     if (item.key === 'try') {  // try:
-        openBlocks++; // Incrementar contador de bloques abiertos
+        blockStack.push('try');
         return `${indent}try {\n`;
     }
 
     if (item.key === 'fail') {  // fail:
-        openBlocks++; // Incrementar contador de bloques abiertos
+        blockStack.push('fail');
         return `${indent}catch(err) {\n`;
     }
 
@@ -390,12 +480,14 @@ const transpileLine = (item) => {
         return checkUse(indent, item.code)
 
     if (item.key === 'type') {  // type:
-        openBlocks++; // Incrementar contador de bloques abiertos
+        blockStack.push('type');
         return `${indent}class ${item.code} {\n`;
     }
 
-    if (item.key === 'set')  // set:
-        return checkSet(indent, item.code);
+    if (item.key === 'set') {  // set:
+        blockStack.push('set');
+        return checkSet(indent, item.code, item);
+    }
 
     if (item.key === 'web')  // web: server, listen, handle, expose, socket, upload, fetch
         return checkWeb(indent, item.code);

@@ -134,13 +134,34 @@ pub fn compiler_source(target: i32) -> Result<String, String> {
 /// Map an input path under `abc/` to the corresponding `run/` output path.
 pub fn output_path(script_file: &str, target: i32) -> String {
     let extension = file_extension(target);
-    let newfile = if let Some(pos) = script_file.find("abc") {
-        let (before, after) = script_file.split_at(pos);
-        format!("{before}run{}", &after[3..])
-    } else {
-        script_file.to_string()
-    };
-    newfile.replace(".abc", extension)
+    // Replace the first "abc" path component with "run", otherwise write to run/.
+    let path = std::path::Path::new(script_file);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(script_file);
+    let stem = file_name.strip_suffix(".abc").unwrap_or(file_name);
+
+    let mut out = std::path::PathBuf::new();
+    let mut replaced = false;
+    if let Some(parent) = path.parent() {
+        for component in parent.components() {
+            if !replaced && component.as_os_str() == "abc" {
+                out.push("run");
+                replaced = true;
+            } else {
+                out.push(component.as_os_str());
+            }
+        }
+    }
+
+    if !replaced {
+        out.clear();
+        out.push("run");
+    }
+
+    out.push(format!("{stem}{extension}"));
+    out.to_string_lossy().to_string()
 }
 
 /// Compile ABCode source to the given target language.

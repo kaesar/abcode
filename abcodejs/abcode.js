@@ -1,7 +1,7 @@
 // © 2021-2025 by César Andres Arcila Buitrago
 
 const sentences = [];
-const words = ['fun:','if:','when:','else:','for:','do:','try:','fail:','use:','run:','pass:','var:','val:','set:','type:','echo:','read:','save:','web:','dbc:','goal','like:','form:','plug:','case:','each:'];  // 'plug:play','make:show','fix','pair'?
+const words = ['fun:','if:','when:','else:','for:','do:','try:','fail:','use:','run:','pass:','var:','val:','set:','type:','echo:','read:','save:','web:','dbc:','goal','like:','form:','plug:','case:','each:','file:'];  // 'plug:play','make:show','fix','pair'?
 //const breaks = ['fun:','if:','when:','else:','for:','do:','try:','fail:','case:','each:'];
 let isMainModule = false;
 
@@ -69,8 +69,13 @@ const applyRoutines = (code, targetLang) => {
             }
             else if (routine.same) {
                 // Para same: x.upper() -> x.toUpperCase() (js)
-                const regex = new RegExp(`\\${routine.name}\\(`, 'g');
-                processedCode = processedCode.replace(regex, replacement + '(');
+                if (routine.name === '.find') {
+                    // String .find(x) -> .indexOf(x), but keep array .find(x => ...).
+                    processedCode = processedCode.replace(/\.find\(\s*(['"][^'"]*['"]|[A-Za-z_$][\w$]*|\d+)\s*\)/g, replacement + '($1)');
+                } else {
+                    const regex = new RegExp(`\\${routine.name}\\(`, 'g');
+                    processedCode = processedCode.replace(regex, replacement + '(');
+                }
             }
             else if (routine.abc) {
                 // Para abc: jsonload(x) -> JSON.parse(x) (js)
@@ -96,6 +101,34 @@ const get = (key) => {  // Standard way to get key/value pair
     return search(sentences, key);
 }
 
+// Remove strings and comments so braces/parentheses inside text do not
+// affect the multi-line expression balance.
+const stripForBalance = (line) => {
+    let out = '';
+    let quote = null;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (quote) {
+            if (ch === '\\') { i++; continue; }
+            if (ch === quote) quote = null;
+            continue;
+        }
+        if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+        if (ch === '#') break;
+        out += ch;
+    }
+    return out;
+}
+
+const balanceOf = (line) => {
+    let balance = 0;
+    for (const ch of stripForBalance(String(line === null || line === undefined ? '' : line))) {
+        if (ch === '{' || ch === '[' || ch === '(') balance++;
+        else if (ch === '}' || ch === ']' || ch === ')') balance--;
+    }
+    return balance;
+}
+
 const setPairs = (lines, keySeparator) => {  // For fixing key/value pairs
     let key = null;
     let value = null;
@@ -106,6 +139,7 @@ const setPairs = (lines, keySeparator) => {  // For fixing key/value pairs
     let keypos = 0;
     let trimed = null;
     let ready = false;
+    let continuation = 0;
 
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
@@ -115,8 +149,26 @@ const setPairs = (lines, keySeparator) => {  // For fixing key/value pairs
         trimed = line.trim();
         ready = false;
 
+        // Inside a multi-line object/array/call: keep the line verbatim.
+        if (continuation > 0) {
+            indent = keypos;
+            grade = Math.ceil(indent / 2);
+            sentences.push({ key: 'raw', code: line, line: i, indent: indent, grade: grade });
+            continuation += balanceOf(line);
+            continue;
+        }
+
+        const lineKey = trimed.includes(':')
+            ? trimed.substring(0, trimed.indexOf(':')).trim()
+            : null;
+        const isWhenElse = lineKey === 'when' || lineKey === 'else';
+        const isExplicitEnd = trimed === '##';
+
         if (keypos < keypre) {
             let closes =  Math.ceil((keypre - keypos)/2);
+            // when:/else: emit their own closing brace, and ## is an explicit end.
+            if ((isWhenElse || isExplicitEnd) && closes > 0)
+                closes--;
             for (let j = 0; j < closes; j++) {
                 indent = keypre - (j * 2) - 2;
                 grade = Math.ceil(indent / 2);
@@ -165,6 +217,11 @@ const setPairs = (lines, keySeparator) => {  // For fixing key/value pairs
                 value = null;
             
                 sentences.push({ key: key, code: value, line: i, indent: indent, grade: grade });
+
+            // A value that opens a brace/bracket/paren continues on next lines.
+            const opened = balanceOf(value);
+            if (opened > 0)
+                continuation = opened;
         }
         else if (pos < 0) {
             key = 'line';
@@ -180,6 +237,46 @@ const setPairs = (lines, keySeparator) => {  // For fixing key/value pairs
             sentences.push({ key: key, code: value, line: i, indent: indent, grade: grade });
         }
     };
+
+    // Mark field declarations belonging to a set:/type: block.
+    let structIndent = -1;
+    let structKind = null;
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        if (sentence.key === 'set' || sentence.key === 'type') {
+            structIndent = sentence.indent;
+            structKind = sentence.key;
+            continue;
+        }
+        if (structIndent < 0)
+            continue;
+        if (sentence.indent <= structIndent) {
+            structIndent = -1;
+            structKind = null;
+            continue;
+        }
+        if (sentence.key === 'end' || sentence.key === 'line' || sentence.key === 'raw')
+            continue;
+        // In a type: block only the properties (var: @name) are declarations;
+        // a fun: starts executable code again.
+        if (structKind === 'type' && sentence.key === 'fun') {
+            structIndent = -1;
+            structKind = null;
+            continue;
+        }
+        sentence.inStruct = true;
+    }
+
+    // Close blocks that are still open at the end of the file.
+    if (continuation === 0 && keypos > 0) {
+        const closes = Math.ceil(keypos / 2);
+        for (let j = 0; j < closes; j++) {
+            indent = keypos - (j * 2) - 2;
+            if (indent < 0) continue;
+            grade = Math.ceil(indent / 2);
+            sentences.push({ key: 'end', code: '##', line: lines.length, indent: indent, grade: grade });
+        }
+    }
 
     return sentences;
 }
@@ -205,15 +302,17 @@ const rules = (item) => {
         console.warn(`[line ${item.line}] ALERT => wrong indentation: ${item.code}`);
 
     let keys = words.map(x => x.replace(':',''));
-    let keysOk = keys.concat(['doc','line','end','@']);  // ¿ doc ?
+    let keysOk = keys.concat(['doc','line','end','@','raw']);  // ¿ doc ?
 
-    if (!keysOk.includes(item.key))
+    // Inside set:/type: the lines are field declarations (name: type),
+    // not statements, so keyword/assignment warnings do not apply.
+    if (!item.inStruct && !keysOk.includes(item.key))
         console.warn(`[line ${item.line}] ALERT => keyword unknown: ${item.key}`);
 
-    if (item.key === 'var' && item.code.indexOf('=') < 0)
+    if (!item.inStruct && item.key === 'var' && item.code.indexOf('=') < 0)
         console.warn(`[line ${item.line}] ALERT => missing assignment: ${item.code}`);
     
-    if (item.key === 'var' && item.code.indexOf(':') < 0)
+    if (!item.inStruct && item.key === 'var' && item.code.indexOf(':') < 0)
         console.warn(`[line ${item.line}] ALERT => consider datatype if you want to transpile for certain languages: ${item.code}`);
     
     if (item.key === 'fun' && item.code.indexOf(':') < 0 && item.code.indexOf('main') < 0)
@@ -248,6 +347,9 @@ const parseVar = (code) => {
     if (left > 0) {
         name = code.substr(0, left).trim();
         value = code.substr(left + 1).trim();
+    } else {
+        // Declaration without initializer: var: name or var: name:type
+        name = code.trim();
     }
     let kind = 'any';
     if (name && name.indexOf(':') > 0) {
@@ -339,7 +441,7 @@ const parseFor = (code) => {
             stop = rangex[1].trim();
 
             if (rangex.length >= 3)
-                step = rangex[2];
+                step = rangex[2].trim();
         }
         
         incode = 'in ' + start + '..' + stop;
@@ -347,7 +449,7 @@ const parseFor = (code) => {
     }
     else if (code.indexOf(' in ') > 0) {
         incode = code.substr(code.indexOf(' in ')).trim();
-        //varstep = code.substr(0, code.indexOf(' in ')).trim();
+        varstep = code.substr(0, code.indexOf(' in ')).trim();
     }
     return [ start, stop, step, varstep, varsize, incode ];
 }
@@ -397,6 +499,10 @@ const parseSub = (code) => {
         sub('delete');
     else if (code.trim().indexOf('head(') === 0)
         sub('head');
+    else if (code.trim().indexOf('patch(') === 0)
+        sub('patch');
+    else if (code.trim().indexOf('options(') === 0)
+        sub('options');
 
     return [ method, route, name, simple ];
 
@@ -455,7 +561,10 @@ const parseDBC = (code) => {
 }
 
 const mapScript = (script) => {
-    let lines = script.split('\n').filter(Boolean);
+    // Ignore empty and whitespace-only lines: they must not affect the
+    // indentation tracking (a whitespace line would otherwise look like a
+    // dedent and close open blocks).
+    let lines = script.split('\n').filter(line => line.trim().length > 0);
     if (lines.length === 0) return [];
     if (lines.length === 1) script.split('\r').filter(Boolean);
 //lines.map( l => console.log('*=>', l) );
@@ -475,7 +584,9 @@ const transpileLines = (language, script, transpileLine) => {
     for (let i = 0; i < source.length; i++) {
         ok = rules(source[i]);
         if (ok) {
-            target += transpileLine(source[i]);
+            const line = transpileLine(source[i]);
+            if (typeof line === 'string')
+                target += line;
         }
     }
     return target

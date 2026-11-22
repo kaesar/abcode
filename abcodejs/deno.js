@@ -2,6 +2,12 @@
 
 // Variable to store current script for framework detection
 let currentScript = '';
+// Stack of open blocks: fun, if, for, do, try, fail, type, set
+let blockStack = [];
+
+const normalizeBool = (code) => String(code === null || code === undefined ? '' : code)
+    .replace(/\bTrue\b/g, 'true')
+    .replace(/\bFalse\b/g, 'false');
 
 function start(script, plan) {
     console.log('~~~~~~~~~~~~~~~');
@@ -26,14 +32,21 @@ function start(script, plan) {
     }
     
     const processedScript = checkLike(script, targetLang);
-    return transpileLines('Deno', processedScript, transpileLine);
+    return transpileLines('Deno', processedScript, transpileLine) || '';
 }
 
 const checkLet = (indent, key, code) => {
+    // Class property: var: @name (or var: @name = value)
+    const field = code.trim().match(/^@([A-Za-z_$][\w$]*)\s*(?:=\s*(.*))?$/);
+    if (field) {
+        const fieldName = field[1];
+        if (field[2] !== undefined && field[2].trim() !== '')
+            return `${indent}this.${fieldName} = ${field[2].trim()};\n`;
+        return `${indent}${fieldName};\n`;
+    }
+
     let [name, kind, value] = parseVar(code);
     if (value !== null && value.length === 0)
-        value = 'null';
-    else if (value === 'nil')
         value = 'null';
 
     // Apply routines to the value
@@ -41,46 +54,37 @@ const checkLet = (indent, key, code) => {
         value = applyRoutines(value, 'deno');
     }
 
-    let sentence = `let ${name} = ${value}`;
-
-    if (sentence.indexOf('int') > -1)
-        sentence = sentence.replace(new RegExp('int','g'), 'number');
-    else if (sentence.indexOf('float') > -1)
-        sentence = sentence.replace(new RegExp('float','g'), 'number');
-    
-    return `${indent}${sentence};\n`;
+    let sentence = key === 'val' ? `const ${name} = ${value}` : `let ${name} = ${value}`;
+   
+    return `${indent}${sentence}\n`;
 }
 
 const checkFun = (indent, code) => {
     const [name, kind, params, spec, simple] = parseFun(code);
-    let sentence = `function ${name} (`;
+    const paramList = params.map(p => p.name).join(', ');
+    const inClass = blockStack.includes('type');
 
-    for (let i = 0; i < params.length; i++) {
-        if (i > 0)
-            sentence += ', ';
-        sentence += params[i].name + ': ' + params[i].kind;
+    // Constructor: fun: new(...) -> constructor(...)
+    if (name === 'new')
+        return `${indent}constructor (${paramList}) {\n`;
+
+    // Method inside type: ... -> name(...) { ... }
+    if (inClass) {
+        const prefix = spec && spec.includes('async') ? 'async ' : '';
+        return `${indent}${prefix}${name} (${paramList}) {\n`;
     }
 
-    if (kind && kind !== 'void')
-        sentence += `): ${kind} {`;
-    else
-        sentence += ') {';
-
-    if (sentence.indexOf('int') > -1)
-        sentence = sentence.replace(new RegExp('int','g'), 'number');
-    else if (sentence.indexOf('float') > -1)
-        sentence = sentence.replace(new RegExp('float','g'), 'number');
-    else if (sentence === 'function main () {')
-        sentence = 'async function main () {';
+    let sentence = `function ${simple} {`;
     
-    if (code === 'new')
-        setence = sentence.replace('new', 'constructor');
+    // Handle async functions
+    if (spec && spec.includes('async'))
+        sentence = `async function ${name}(${paramList}) {`;
 
     return `${indent}${sentence}\n`;
 }
 
 const checkIf = (indent, key, code) => {
-    let sentence = parseIf(key, code);
+    let sentence = normalizeBool(parseIf(key, code));
 
     if (key === 'if') {  // if:
         return `${indent}if (${sentence}) {\n`;
@@ -100,21 +104,26 @@ const checkIf = (indent, key, code) => {
 
 const checkFor = (indent, code) => {
     const [ start, stop, step, varstep, varsize, incode ] = parseFor(code);
+    const condition = normalizeBool(code);
+
     if (incode && varstep) {
-        if (stop.indexOf('len(') === 0 && varsize) {
+        // for: i in range(...) -> numeric loop
+        if (start !== null && stop !== null) {
+            const limit = stop.indexOf('len(') === 0 && varsize
+                ? `${varsize}.length`
+                : stop;
             if (step && step !== "1")
-                return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${varsize}.length; ${varstep} += ${step}) {\n`;
-            return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${varsize}.length; ${varstep}++) {\n`;
+                return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${limit}; ${varstep} += ${step}) {\n`;
+            return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${limit}; ${varstep}++) {\n`;
         }
-        else
-            return `${indent}for (let ${varstep} = ${start}; ${varstep} < ${stop}; ${varstep}++) {\n`;
+        // for: x in collection -> iterate values, not indexes
+        const collection = incode.replace(/^in\s+/, '');
+        return `${indent}for (const ${varstep} of ${collection}) {\n`;
     }
-    else if (incode)
-        return `${indent}for (${code}) {\n`;
     else if (varsize)
-        return `${indent}while (${code.replace('len(' + varsize + ')', varsize + '.length')}) {\n`;
+        return `${indent}while (${condition.replace('len(' + varsize + ')', varsize + '.length')}) {\n`;
     else
-        return `${indent}while (${code}) {\n`;
+        return `${indent}while (${condition}) {\n`;
 }
 
 const checkDoc = (indent, code) => {
@@ -126,25 +135,61 @@ const checkDoc = (indent, code) => {
 }
 
 const checkRead = (indent, code) => {
-    return `${indent}require ${code};\n`;
+    // read: is reserved in the specification; do not emit invalid JS.
+    return `${indent}// read: ${code} (reserved)\n`;
 }
 
-const checkSet = (indent, code) => {
-    return `${indent}let ${code};\n`;
+const checkSet = (indent, code, item) => {
+    // set: Name defines a data structure. Map it to a JS class whose
+    // constructor accepts an object with the declared fields.
+    const fields = [];
+    const baseIndent = item.indent;
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        if (sentence.line <= item.line)
+            continue;
+        if (sentence.indent <= baseIndent)
+            break;
+        if (['end','line','raw','doc'].includes(sentence.key))
+            continue;
+        fields.push({ name: sentence.key, type: sentence.code || 'any' });
+    }
+
+    let out = `${indent}/** @typedef {Object} ${code}\n`;
+    for (const field of fields)
+        out += `${indent} * @property {${field.type}} ${field.name}\n`;
+    out += `${indent} */\n`;
+    out += `${indent}class ${code} {\n`;
+    out += `${indent}  constructor(fields = {}) {\n`;
+    out += `${indent}    Object.assign(this, {\n`;
+    for (const field of fields)
+        out += `${indent}      ${field.name}: undefined,\n`;
+    out += `${indent}    }, fields);\n`;
+    out += `${indent}  }\n`;
+    out += `${indent}}\n`;
+    return out;
 }
 
 const checkUse = (indent, code) => {
     let lib = parseUse(code)
     if (lib === '@abc')
-        lib = `{ abc } from 'abc.js';\n`;
+        lib = `import { abc } from "abc.js";`;
     else if (lib === '@api')
-        lib = 'restana from "npm:restana";';  // Default: Restana
+        lib = `import restana from "npm:restana";\nimport { createServer } from "node:http";\nconst userver = createServer();`;
     else if (lib === '@hono')
-        lib = '{ Hono } from "npm:hono";';
+        lib = `import { Hono } from "npm:hono";`;
     else if (lib === "@mongodb")
-        lib = '{ MongoClient } from "https://deno.land/x/mongo/mod.ts"';
-    
-    return `${indent}import ${lib};\n`;
+        lib = `import { MongoClient } from "npm:mongodb";\nconst mongodb = { MongoClient };`;
+    else if (lib === '@sys')
+        lib = `import * as sys from "node:sys";`;
+    else if (lib === '@cli')
+        lib = `import { execSync } from "node:child_process";`;
+    else if (lib.startsWith('@'))
+        lib = `// use: ${lib} (not implemented)`;
+    else
+        lib = `import "${lib}";`;
+
+    return `${indent}${lib}\n`;
 }
 
 const checkSub = (indent, code) => {
@@ -154,14 +199,15 @@ const checkSub = (indent, code) => {
         const isHono = currentScript && currentScript.includes('@hono');
         
         if (isHono) {
-            return `${indent}app.${method}(${route}, (c) => {\n`;
+            return `${indent}app.${method}(${route.replace(new RegExp('"','g'), `'`)}, (c) => {\n`;
         } else {
-            // Default: Restana
-            return `${indent}app.${method}(${route}, (req, res) => {\n`;
+            // Default: Restana. Alias r to req for existing ABCode examples.
+            return `${indent}app.${method}(${route.replace(new RegExp('"','g'), `'`)}, ${name})\n${indent}function ${name} (req, res) {\n${indent}  const r = req;\n`;
         }
     }
     
-    return `${indent}${code}.forEach {\n`;
+    // Generic do: is not a web route. Avoid emitting invalid JS.
+    return `${indent}// do: ${code} (unsupported form)\n`;
 }
 
 const checkWeb = (indent, code) => {
@@ -172,13 +218,13 @@ const checkWeb = (indent, code) => {
         if (isHono) {
             return `${indent}const ${handle} = new Hono();\n`;
         } else {
-            return `${indent}const ${handle} = restana();\n`;
+            return `${indent}const ${handle} = restana({ server: userver, prioRequestsProcessing: false });\n`;
         }
     } else if (method === '@listen' || method === 'listen') {
         if (isHono) {
-            return `${indent}Deno.serve(app.fetch);\n`;
+            return `${indent}Deno.serve({ port: ${handle} }, app.fetch);\n`;
         } else {
-            return `${indent}app.start(${handle});\n`;
+            return `${indent}userver.listen(${handle});\n`;
         }
     } else if (method === '@handle' || method === '@handler' || method === 'handle') {
         if (isHono) {
@@ -194,11 +240,11 @@ const checkWeb = (indent, code) => {
 const checkDBC = (indent, code) => {
     const [method, handle, vary] = parseDBC(code);
     if (method === 'link')
-        return `${indent}const dbc = new MongoClient();\n${indent}dbc.connect(${handle});\n`;
+        return `${indent}const dbc = new mongodb.MongoClient(${handle});\n`;
     else if (vary)
-        return `${indent}let ${vary} = dbc.database(${handle});\n`;
+        return `${indent}const ${vary} = dbc.db(${handle});\n`;
 
-    return `${indent}${code}\n`;
+    return `${indent}// dbc: ${code}\n`;
 }
 
 // Process goal: directive to determine target language
@@ -206,47 +252,57 @@ const checkGoal = (script) => {
     const goalMatch = script.match(/goal:\s*(\w+)/i);
     if (goalMatch && goalMatch[1]) {
         const goal = goalMatch[1].toLowerCase();
+        // If goal is specified and it's not node, log it for potential use
         if (goal !== 'deno') {
             console.log(`@GOAL:${goal}`);
         }
         return goal;
     }
-    return 'deno';
+    return 'deno'; // Default goal
 }
 
 // Process like: directives with inline #in: comments
 const checkLike = (script, currentGoal) => {
+    // Split script into lines
     const lines = script.split('\n');
     const processedLines = [];
     
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
+        // Skip empty lines
         if (!line.trim()) {
             processedLines.push(line);
             continue;
         }
         
-        if (line.trim().match(/^(goal|type):/i)) {
+        // Skip goal: directives (not statements). type: must be kept.
+        if (line.trim().match(/^goal:/i)) {
             continue;
         }
         
+        // Check if this is a like: directive with inline #in: comment
         if (line.trim().match(/^like:/i)) {
-            const inMatch = line.match(/#in:\s*(\w+)/i);
+            const inMatch = line.match(/#@?in:\s*(\w+)/i);
             if (inMatch && inMatch[1]) {
                 const targetLang = inMatch[1].toLowerCase();
                 
+                // If the target language matches our current goal, use the like: line
                 if (targetLang === currentGoal) {
+                    // Replace the previous line with the like: content
                     if (processedLines.length > 0) {
-                        processedLines.pop();
+                        processedLines.pop(); // Remove the previous line
                     }
-                    const cleanedLine = line.replace(/^like:\s*/i, '').replace(/#in:\s*\w+/i, '').trim();
+                    // Add the like: content (removing the 'like:' prefix and the #in: comment)
+                    const cleanedLine = line.replace(/^like:\s*/i, '').replace(/#@?in:\s*\w+/i, '').trim();
                     processedLines.push(cleanedLine);
                 }
+                // Skip this line if it doesn't match the current goal
                 continue;
             }
         }
         
+        // Regular line, add it to processed lines
         processedLines.push(line);
     }
     
@@ -255,6 +311,7 @@ const checkLike = (script, currentGoal) => {
 
 // Función para manejar operaciones de archivo
 const checkFile = (indent, code) => {
+    // Extraer el método y el argumento
     const parts = code.split(/\s*=\s*/);
     if (parts.length < 2) return `${indent}// Invalid file operation: ${code}\n`;
     
@@ -264,16 +321,16 @@ const checkFile = (indent, code) => {
     switch (method) {
         case '@open':
         case 'open':
-            return `${indent}const fileHandle = await Deno.open(${args});\n`;
+            return `${indent}const fs = require('fs');\n${indent}const fileHandle = fs.openSync(${args}, 'r+');\n`;
         case '@write':
         case 'write':
-            return `${indent}await Deno.writeTextFile(${args.split(',')[0]}, ${args.split(',')[1]});\n`;
+            return `${indent}fs.writeFileSync(${args.split(',')[0]}, ${args.split(',')[1]});\n`;
         case '@read':
         case 'read':
-            return `${indent}const fileContent = await Deno.readTextFile(${args});\n`;
+            return `${indent}const fileContent = fs.readFileSync(${args}, 'utf8');\n`;
         case '@close':
         case 'close':
-            return `${indent}fileHandle.close();\n`;
+            return `${indent}fs.closeSync(${args});\n`;
         default:
             return `${indent}// Unknown file operation: ${method}\n`;
     }
@@ -282,20 +339,29 @@ const checkFile = (indent, code) => {
 const transpileLine = (item) => {
     let indent = '';
     if (item.indent > 0)
-        for (let j = 0;  j < item.indent; j++)
+        for (let j = 0; j < item.indent; j++)
             indent += ' ';
+
+    if (item.key === 'raw')  // verbatim continuation line
+        return `${item.code}\n`;
 
     if (item.key === 'line')  // enter
         return `\n`;
 
     if (item.key === 'end') {  // ##
+        const kind = blockStack.pop();
+        if (!kind)
+            return `\n`;
+        if (kind === 'set')
+            return ``; // set: has no JS block
         // Check if this closes a block that needs extra line break
-        const needsBreak = item.indent === 0 || 
+        const needsBreak = item.indent === 0 ||
                           (item.grade && item.grade < (item.prevGrade || 0));
         return needsBreak ? `${indent}}\n\n` : `${indent}}\n`;
     }
 
     if (item.key === 'doc') {  // #
+        // Verificar si es una anotación estilo Rust (#[annotation])
         if (item.code.startsWith('[') && item.code.endsWith(']')) {
             return `${indent}// ${item.code}\n`;
         }
@@ -308,16 +374,21 @@ const transpileLine = (item) => {
     if (item.key === 'val')  // val:
         return checkLet(indent, item.key, item.code);
     
-    if (item.key === 'fun')  // fun:
+    if (item.key === 'fun') {  // fun:
+        blockStack.push('fun');
         return checkFun(indent, item.code);
+    }
 
     if (item.key === 'pass') {  // pass:
+        // Reemplazar @ con this. para acceder a propiedades de clase
         let code = item.code.replace(/@([a-zA-Z0-9_]+)/g, 'this.$1');
         return `${indent}return ${code};\n`;
     }
 
-    if (item.key === 'if')  // if:
+    if (item.key === 'if') {  // if:
+        blockStack.push('if');
         return checkIf(indent, item.key, item.code);
+    }
 
     if (item.key === 'when')  // when:
         return checkIf(indent, item.key, item.code);
@@ -325,59 +396,87 @@ const transpileLine = (item) => {
     if (item.key === 'else')  // else:
         return checkIf(indent, item.key, item.code);
 
-    if (item.key === 'for')  // for:
+    if (item.key === 'for') {  // for:
+        blockStack.push('for');
         return checkFor(indent, item.code);
+    }
 
     if (item.key === 'run') {  // run:
+        // Reemplazar @ con this. para acceder a propiedades de clase
         let code = item.code.replace(/@([a-zA-Z0-9_]+)/g, 'this.$1');
+        // Apply routines to the code
         code = applyRoutines(code, 'deno');
+        // Handle await expressions
+        code = code.replace(/\bawait\s+/g, 'await ');
         return `${indent}${code}\n`;
     }
 
     if (item.key === 'echo') {  // echo:
+        // Reemplazar @ con this. para acceder a propiedades de clase
         let code = item.code.replace(/@([a-zA-Z0-9_]+)/g, 'this.$1');
+        // Apply routines (e.g. s.find("x"), len(v)) to printed expressions.
+        code = applyRoutines(code, 'deno');
         
+        // Detectar si es una cadena con interpolación
         if (code.includes('{') && code.includes('}') && code.startsWith('"') && code.endsWith('"')) {
-            code = code.substring(1, code.length - 1);
-            code = code.replace(/{([^{}:]+)(?::([^{}]+))?}/g, (match, varName, format) => {
-                if (!format) return '${' + varName.trim() + '}';
-                
-                if (format.includes('.')) {
-                    const [width, precision] = format.split('.');
-                    return '${' + varName.trim() + '.toFixed(' + precision + ')}';
+            // Convertir a template literal
+            code = code.substring(1, code.length - 1); // Quitar comillas
+            // Convert {var} / {var:width} / {var:.2f}, but keep an already
+            // valid JS interpolation such as ${var} untouched.
+            code = code.replace(/(^|[^$])\{([^{}:]+)(?::([^{}]+))?\}/g, (match, prefix, varName, format) => {
+                const name = varName.trim();
+                if (!format) return prefix + '${' + name + '}';
+
+                // Decimal format: {price:.2f}
+                if (format.startsWith('.')) {
+                    const precision = format.slice(1).replace(/[^0-9]/g, '') || '0';
+                    return prefix + '${Number(' + name + ').toFixed(' + precision + ')}';
                 }
-                return '${' + varName.trim() + '.padStart(' + format + ')}';
+
+                // Width format: {name:10}
+                const width = format.replace(/[^0-9]/g, '') || '0';
+                return prefix + '${String(' + name + ').padStart(' + width + ')}';
             });
-            return `${indent}console.log(\`${code}\`);\n`;
+            return `${indent}console.log(\`${code}\`)\n`;
         }
         
-        return `${indent}console.log(${code});\n`;
+        return `${indent}console.log(${code})\n`;
     }
 
     if (item.key === 'read')  // read:
         return checkRead(indent, item.code);
 
-    if (item.key === 'do')  // do:
+    if (item.key === 'do') {  // do:
+        blockStack.push('do');
         return checkSub(indent, item.code);
+    }
 
-    if (item.key === 'try')  // try:
+    if (item.key === 'try') {  // try:
+        blockStack.push('try');
         return `${indent}try {\n`;
+    }
 
-    if (item.key === 'fail')  // fail:
+    if (item.key === 'fail') {  // fail:
+        blockStack.push('fail');
         return `${indent}catch(err) {\n`;
+    }
 
     if (item.key === 'use')  // use:
         return checkUse(indent, item.code)
 
-    if (item.key === 'type')  // type:
+    if (item.key === 'type') {  // type:
+        blockStack.push('type');
         return `${indent}class ${item.code} {\n`;
+    }
 
-    if (item.key === 'set')  // set:
-        return checkSet(indent, item.code);
+    if (item.key === 'set') {  // set:
+        blockStack.push('set');
+        return checkSet(indent, item.code, item);
+    }
 
     if (item.key === 'web')  // web: server, listen, handle, expose, socket, upload, fetch
         return checkWeb(indent, item.code);
-        
+
     if (item.key === 'file')  // file: open, write, read, close
         return checkFile(indent, item.code);
 
