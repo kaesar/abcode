@@ -2,6 +2,7 @@
 name = "abcoderun"
 version = "0.7.0"
 edition = "2024"
+rust-version.workspace = true
 description = "ABCode Runtime - Execute ABCode scripts directly using BoaJS"
 
 [[bin]]

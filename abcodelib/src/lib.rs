@@ -1,9 +1,14 @@
 use boa_engine::{
-    Context, JsString, JsValue, Source,
+    Context, JsString, Source,
+    gc::{empty_trace, Finalize, Trace},
     object::{builtins::JsArray, ObjectInitializer},
     property::Attribute,
+    NativeFunction,
 };
+use std::sync::Arc;
 use rust_embed::RustEmbed;
+
+pub use boa_engine::{JsError, JsValue};
 
 #[derive(RustEmbed)]
 #[folder = "../abcodejs/"]
@@ -194,6 +199,43 @@ pub fn execute_js(js_code: &str) -> Result<ExecuteResult, String> {
 /// The rest are the user-provided arguments. When `argv` is empty, no `process`
 /// global is injected (backwards-compatible with plain `execute_js`).
 pub fn execute_js_with_argv(js_code: &str, argv: &[String]) -> Result<ExecuteResult, String> {
+    if argv.is_empty() {
+        return execute_js_with_globals(js_code, &[]);
+    }
+
+    let js_argv: Vec<JsValue> = argv
+        .iter()
+        .map(|s| JsValue::new(JsString::from(s.as_str())))
+        .collect();
+    let mut context = Context::default();
+
+    let js_argv_array = JsArray::from_iter(js_argv, &mut context);
+    let process_obj = ObjectInitializer::new(&mut context)
+        .property(
+            JsString::from("argv"),
+            JsValue::from(js_argv_array),
+            Attribute::empty(),
+        )
+        .build();
+
+    let globals = [("process", JsValue::new(process_obj))];
+    execute_core(js_code, &globals)
+}
+
+/// Execute JavaScript with `abchelper.js` (console capture) and extra host
+/// globals registered on the context **before** the script is evaluated.
+///
+/// Each entry in `globals` is a `(name, value)` pair written to the global
+/// object (e.g. a host `services` facade for hex). The helper is always loaded
+/// first, so callbacks like `getConsole()` remain available.
+pub fn execute_js_with_globals(
+    js_code: &str,
+    globals: &[(&str, JsValue)],
+) -> Result<ExecuteResult, String> {
+    execute_core(js_code, globals)
+}
+
+fn execute_core(js_code: &str, globals: &[(&str, JsValue)]) -> Result<ExecuteResult, String> {
     let mut context = Context::default();
 
     let helper = load_asset("abchelper.js")?;
@@ -201,27 +243,11 @@ pub fn execute_js_with_argv(js_code: &str, argv: &[String]) -> Result<ExecuteRes
         .eval(Source::from_bytes(helper.as_bytes()))
         .map_err(|e| format!("Helper setup error: {e}"))?;
 
-    // Inject process.argv if arguments were provided
-    if !argv.is_empty() {
-        let js_argv: Vec<JsValue> = argv
-            .iter()
-            .map(|s| JsValue::new(JsString::from(s.as_str())))
-            .collect();
-        let js_argv_array = JsArray::from_iter(js_argv, &mut context);
-
-        let process_obj = ObjectInitializer::new(&mut context)
-            .property(
-                JsString::from("argv"),
-                JsValue::from(js_argv_array),
-                Attribute::empty(),
-            )
-            .build();
-
-        let process_val = JsValue::new(process_obj);
+    for (name, value) in globals {
         context
             .global_object()
-            .set(JsString::from("process"), process_val, false, &mut context)
-            .map_err(|e| format!("Failed to set process global: {e}"))?;
+            .set(JsString::from(*name), value.clone(), false, &mut context)
+            .map_err(|e| format!("Failed to set {name} global: {e}"))?;
     }
 
     let result = context
@@ -238,6 +264,105 @@ pub fn execute_js_with_argv(js_code: &str, argv: &[String]) -> Result<ExecuteRes
 
     Ok(ExecuteResult { logs, value_json })
 }
+
+/// Convert a `serde_json::Value` into a Boa `JsValue` within `context`.
+///
+/// `hex` uses this to hand Rust facade results (serialized as JSON) to scripts
+/// as native JS values.
+pub fn js_value_from_json(
+    context: &mut Context,
+    json: &serde_json::Value,
+) -> Result<JsValue, String> {
+    JsValue::from_json(json, context).map_err(|e| format!("JSON to JsValue conversion: {e}"))
+}
+
+/// A host callable exposed to scripts as a method on the global `services` object.
+///
+/// The callback receives the raw JSON arguments the script passed and must return
+/// a JSON value (or an error string). All Boa internals are hidden from the caller.
+pub struct HostService {
+    /// Method name on `services` (e.g. `abcSheet`, `sendEmail`).
+    pub name: &'static str,
+    /// Rust callback backing the method.
+    pub callback: Arc<dyn Fn(&[serde_json::Value]) -> Result<serde_json::Value, String> + Send + Sync>,
+}
+
+/// Captured handle for a `HostService` callback inside a native Boa function.
+struct HostServiceHandle {
+    callback: Arc<dyn Fn(&[serde_json::Value]) -> Result<serde_json::Value, String> + Send + Sync>,
+}
+
+// The handle only holds a plain Rust closure (no `Gc`/`JsValue`), so tracing is a no-op.
+unsafe impl Trace for HostServiceHandle {
+    empty_trace!();
+}
+impl Finalize for HostServiceHandle {}
+
+/// Execute JavaScript with `abchelper.js` and a **global `services` object** whose
+/// methods are host callbacks.
+///
+/// This is the bridge `hex` uses to give ABCode scripts access to infrastructure
+/// (XDB, cache, email, S3, events, Lambda…). abcodelib keeps every Boa interaction
+/// internal: `hex` only supplies `HostService{ name, callback }` closures.
+pub fn execute_js_with_services(
+    js_code: &str,
+    services: &[HostService],
+) -> Result<ExecuteResult, String> {
+    let mut context = Context::default();
+
+    let helper = load_asset("abchelper.js")?;
+    context
+        .eval(Source::from_bytes(helper.as_bytes()))
+        .map_err(|e| format!("Helper setup error: {e}"))?;
+
+    let mut builder = ObjectInitializer::new(&mut context);
+    for service in services {
+        let handle = HostServiceHandle {
+            callback: Arc::clone(&service.callback),
+        };
+        let function = NativeFunction::from_copy_closure_with_captures(
+            move |_this, args, capture, context| {
+                let mut json_args = Vec::with_capacity(args.len());
+                for arg in args {
+                    json_args.push(arg.to_json(context)?.unwrap_or(serde_json::Value::Null));
+                }
+
+                let result = (capture.callback)(&json_args)
+                    .map_err(|e| JsError::from_opaque(JsValue::new(JsString::from(e))))?;
+
+                Ok(JsValue::from_json(&result, context)?)
+            },
+            handle,
+        );
+        builder.function(function, JsString::from(service.name), 0);
+    }
+    let services_object = builder.build();
+
+    context
+        .global_object()
+        .set(
+            JsString::from("services"),
+            JsValue::new(services_object),
+            false,
+            &mut context,
+        )
+        .map_err(|e| format!("Failed to set services global: {e}"))?;
+
+    let result = context
+        .eval(Source::from_bytes(js_code.as_bytes()))
+        .map_err(|e| format!("JavaScript execution error: {e}"))?;
+
+    let logs = call_get_console(&mut context)?;
+
+    let value_json = if result.is_undefined() {
+        None
+    } else {
+        Some(json_stringify(&mut context, result)?)
+    };
+
+    Ok(ExecuteResult { logs, value_json })
+}
+
 
 fn call_get_console(context: &mut Context) -> Result<String, String> {
     let key = JsString::from("getConsole");
@@ -401,4 +526,56 @@ fn set_last_error(err: &str) {
     LAST_ERROR.with(|cell| {
         *cell.borrow_mut() = Some(err.to_string());
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn execute_js_with_globals_injects_named_global() {
+        let js = "evens = 2 + 2;";
+        let globals = [("myGlobal", JsValue::new(JsString::from("ok")))];
+        let result = execute_js_with_globals(js, &globals).unwrap();
+        assert_eq!(result.value_json.as_deref(), Some("4"));
+    }
+
+    #[test]
+    fn execute_js_with_services_exposes_host_callbacks() {
+        let js = "const r = services.multiply(3, 3);\nr;";
+        let service = HostService {
+            name: "multiply",
+            callback: Arc::new(|args: &[serde_json::Value]| {
+                let a = args.get(0).and_then(|v| v.as_u64()).unwrap_or(0);
+                let b = args.get(1).and_then(|v| v.as_u64()).unwrap_or(0);
+                Ok(serde_json::json!(a * b))
+            }),
+        };
+        let result = execute_js_with_services(js, &[service]).unwrap();
+        assert_eq!(result.value_json.as_deref(), Some("9"));
+    }
+
+    #[test]
+    fn abcode_transpiles_services_calls() {
+        let source = concat!(
+            "goal: any\n",
+            "fun: handler()\n",
+            "  val: r = services.double(21)\n",
+            "  pass: { \"result\": r }\n",
+            "run: handler()"
+        );
+
+        let compiled = compile(1, source, "*").expect("compile");
+        assert!(compiled.code.contains("services.double"));
+
+        let service = HostService {
+            name: "double",
+            callback: Arc::new(|args: &[serde_json::Value]| {
+                let n = args.get(0).and_then(|v| v.as_u64()).unwrap_or(0);
+                Ok(serde_json::json!(n * 2))
+            }),
+        };
+        let result = execute_js_with_services(&compiled.code, &[service]).unwrap();
+        assert_eq!(result.value_json.as_deref(), Some("{\"result\":42}"));
+    }
 }
