@@ -26,6 +26,8 @@ version = "0.7.0"
 dependencies = [
  "boa_engine",
  "rust-embed",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

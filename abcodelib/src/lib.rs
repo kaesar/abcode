@@ -286,3 +286,119 @@ fn json_stringify(context: &mut Context, value: JsValue) -> Result<String, Strin
         .to_std_string()
         .map_err(|_| "Failed to convert JSON string to UTF-8".to_string())
 }
+
+// ============================================================================
+// C FFI API (for JNI, JNA, FFM, etc.)
+// ============================================================================
+
+use std::ffi::{CStr, CString};
+use std::os::raw::c_char;
+
+/// Compile ABCode source to target language.
+/// Returns a C string that MUST be freed with `abcode_free_string`.
+/// Returns NULL on error (check with abcode_last_error).
+#[unsafe(no_mangle)]
+pub extern "C" fn abcode_compile(
+    target: i32,
+    script_code: *const c_char,
+    plan: *const c_char,
+) -> *mut c_char {
+    let script_code = unsafe {
+        if script_code.is_null() {
+            return std::ptr::null_mut();
+        }
+        CStr::from_ptr(script_code).to_string_lossy().into_owned()
+    };
+    let plan = unsafe {
+        if plan.is_null() {
+            return std::ptr::null_mut();
+        }
+        CStr::from_ptr(plan).to_string_lossy().into_owned()
+    };
+
+    match compile(target, &script_code, &plan) {
+        Ok(result) => {
+            let json = serde_json::json!({
+                "code": result.code,
+                "console_messages": result.console_messages,
+                "file_extension": result.file_extension,
+            });
+            match CString::new(json.to_string()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        }
+        Err(e) => {
+            set_last_error(&e);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Execute JavaScript with abchelper.js (console capture).
+/// Returns a C string that MUST be freed with `abcode_free_string`.
+/// Returns NULL on error.
+#[unsafe(no_mangle)]
+pub extern "C" fn abcode_execute_js(js_code: *const c_char) -> *mut c_char {
+    let js_code = unsafe {
+        if js_code.is_null() {
+            return std::ptr::null_mut();
+        }
+        CStr::from_ptr(js_code).to_string_lossy().into_owned()
+    };
+
+    match execute_js(&js_code) {
+        Ok(result) => {
+            let json = serde_json::json!({
+                "logs": result.logs,
+                "value_json": result.value_json,
+            });
+            match CString::new(json.to_string()) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        }
+        Err(e) => {
+            set_last_error(&e);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Free a C string returned by abcode_compile or abcode_execute_js.
+#[unsafe(no_mangle)]
+pub extern "C" fn abcode_free_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        unsafe {
+            drop(CString::from_raw(ptr));
+        }
+    }
+}
+
+/// Get the last error message (thread-local).
+/// Returns a C string that MUST be freed with `abcode_free_string`.
+/// Returns NULL if no error.
+#[unsafe(no_mangle)]
+pub extern "C" fn abcode_last_error() -> *mut c_char {
+    LAST_ERROR.with(|cell| {
+        let mut last_error = cell.borrow_mut();
+        if let Some(err) = last_error.take() {
+            match CString::new(err) {
+                Ok(cstr) => cstr.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        } else {
+            std::ptr::null_mut()
+        }
+    })
+}
+
+thread_local! {
+    static LAST_ERROR: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+fn set_last_error(err: &str) {
+    LAST_ERROR.with(|cell| {
+        *cell.borrow_mut() = Some(err.to_string());
+    });
+}
